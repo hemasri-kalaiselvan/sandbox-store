@@ -249,6 +249,57 @@ become new small summary tables, not new pipelines.
 
 ---
 
+## Phase 9 — Interaction polish (drill-down, compare, dark mode, export)
+
+- **Drill-down:** the category bar chart is clickable (Chart.js `onClick`). Tapping
+  a category opens a detail card with that category's monthly trend and its top-5
+  products, for the current period — computed from `cat_month` + `product_month`,
+  no new data.
+- **Compare two periods:** two dropdowns (A vs B, by year / all-time) render a KPI
+  comparison (revenue, orders, AOV with Δ%) and a grouped category bar. Reuses the
+  monthly caches.
+- **Dark mode:** a theme toggle flips CSS variables under `:root[data-theme="dark"]`
+  and remembers the choice in `localStorage` (wrapped in try/catch). Chart axis and
+  grid colours were routed through a small `themeColors()` object so charts re-draw
+  in the right palette on toggle.
+- **Export CSV:** a Download button builds a CSV of the current period (monthly
+  revenue, category revenue/profit, state revenue) client-side via a `Blob` — no
+  library, no server.
+
+**Lesson:** all four are pure front-end, built on the caches already in the browser.
+Once the data model is right, the interface can grow a lot without touching the
+database — a good sign the analytical foundation is solid.
+
+---
+
+## Phase 10 — The store (closing the loop)
+
+`shop.html` — a real storefront: browse products (from the `products` table),
+search + filter by category, add to cart (kept in `localStorage`), checkout, and
+**Place order**. Placing an order:
+1. creates (or reuses) a customer via the REST API,
+2. inserts an `orders` row (with `Prefer: return=representation` to get its id),
+3. inserts the `order_items` for the cart.
+
+**Enabling writes** (`03_enable_orders.sql`): the tables were read-only (RLS
+"public read"). Added `INSERT` policies + table/sequence grants for the `anon`
+role. Verified the whole insert path works *as the anon role*, not just as a
+superuser — RLS + grants + identity columns all matter here.
+
+**Seed vs shop, and revert:** every shop-placed order/customer is tagged
+`source = 'shop'` (preloaded data is `source = 'seed'`), so the two are always
+distinguishable. `04_reset_shop_orders.sql` deletes only `source = 'shop'` rows —
+a clean revert to pure seed data any time.
+
+**Live update:** the summary tables are historical snapshots, so a new order
+doesn't change the charts until `02_summary.sql` is re-run. To show live impact,
+the dashboard's **"Live · store orders"** card reads `orders where source='shop'`
+straight from the raw table (auto-refreshing every 20s) — it starts at 0 and
+ticks up with each purchase. **Lesson:** dashboards mix *pre-aggregated history*
+(fast, occasionally refreshed) with a thin *live* read of raw data for "right now".
+
+---
+
 ## How to rebuild everything from zero
 
 1. Create a Supabase project (any name; we used `sandbox`).
