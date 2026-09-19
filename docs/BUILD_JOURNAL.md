@@ -298,6 +298,19 @@ straight from the raw table (auto-refreshing every 20s) — it starts at 0 and
 ticks up with each purchase. **Lesson:** dashboards mix *pre-aggregated history*
 (fast, occasionally refreshed) with a thin *live* read of raw data for "right now".
 
+### 10c — Retention data model (making cohorts real)
+The first cohort chart was flat because each order had an *independent* random
+date — no notion of "join, then churn." Rebuilt STEP 4's timing: every customer
+gets an **acquisition date** (`join_ts`, mildly recent-skewed → growth), their
+**first order sits at join** (defines the cohort), and each **repeat order lands
+after join with exponential decay** (`-ln(random())·3` months) → most repeats
+soon after joining, fewer later. ~18% of repeats still snap to a Diwali window so
+festival spikes survive, and every date is clamped to ≤ now. Result: cohort rows
+now decay (100 → ~40 → ~30 → …) while the 34/26/40 segment split, growth, and
+festival spikes are all preserved. **Lesson:** a chart can only reveal a pattern
+that the data-generating process actually contains — retention needed *time-
+correlated* purchasing, not just the right totals.
+
 ### 10b — Scheduling the refresh (pg_cron)
 The summary tables are snapshots, so shop orders only reach the historical charts
 when they're rebuilt. `05_schedule_refresh.sql` wraps the whole rebuild in a
