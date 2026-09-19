@@ -263,20 +263,33 @@ async function placeOrder(){
   if(!cartCount()){ err.innerHTML='<div class="err">Your cart is empty.</div>'; return; }
   const btn=document.getElementById("placeBtn"); btn.disabled=true; btn.textContent="Placing…";
   try{
-    // reuse this shopper's customer id if we created one before (makes them a repeat buyer)
-    let cid=null; try{ cid=JSON.parse(localStorage.getItem("shopper")||"{}").customer_id||null; }catch(e){}
-    if(!cid){
-      const cust=await insert("customers",
-        {name,email:"shopper"+Date.now()+"@example.com",city,state,signup_date:new Date().toISOString(),source:"shop"},true);
-      cid=cust[0].id;
-    }
     const total=cartTotal();
-    const order=await insert("orders",
-      {customer_id:cid,order_date:new Date().toISOString(),status:"processing",
-       payment_method:pay,city,state,total,source:"shop"},true);
-    const oid=order[0].id;
-    const items=Object.values(cart).map(i=>({order_id:oid,product_id:i.product_id,quantity:i.qty,price:i.price}));
-    await insert("order_items",items,false);
+    const newCustomer=async()=>{
+      const c=await insert("customers",
+        {name,email:"shopper"+Date.now()+"@example.com",city,state,signup_date:new Date().toISOString(),source:"shop"},true);
+      return c[0].id;
+    };
+    const doOrder=async(cid)=>{
+      const order=await insert("orders",
+        {customer_id:cid,order_date:new Date().toISOString(),status:"processing",
+         payment_method:pay,city,state,total,source:"shop"},true);
+      const oid=order[0].id;
+      const items=Object.values(cart).map(i=>({order_id:oid,product_id:i.product_id,quantity:i.qty,price:i.price}));
+      await insert("order_items",items,false);
+      return oid;
+    };
+    // reuse this shopper's saved customer id (makes them a repeat buyer)…
+    let storedCid=null; try{ storedCid=JSON.parse(localStorage.getItem("shopper")||"{}").customer_id||null; }catch(e){}
+    let cid = storedCid || await newCustomer();
+    let oid;
+    try{ oid = await doOrder(cid); }
+    catch(err2){
+      // …but if that saved customer no longer exists (e.g. the data was reset),
+      // create a fresh customer and retry once — self-healing.
+      if(storedCid && /customer|foreign key|23503/i.test(err2.message)){
+        cid = await newCustomer(); oid = await doOrder(cid);
+      } else throw err2;
+    }
 
     try{ localStorage.setItem("shopper",JSON.stringify({name,city,customer_id:cid})); }catch(e){}
     // count store-placed orders so far (source=shop) to show the impact
