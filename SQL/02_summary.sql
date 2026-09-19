@@ -61,9 +61,11 @@ select
   p.price,
   p.rating,
   p.stock,
-  coalesce(sum(oi.quantity), 0)                          as units_sold,
-  coalesce(round(sum(oi.quantity * oi.price), 2), 0)     as revenue,
-  coalesce(round(sum(oi.quantity * (oi.price - p.cost)), 2), 0) as profit
+  -- FILTER keeps only line items whose order actually matched (not cancelled/returned).
+  -- Without it, the LEFT JOIN keeps those items and over-counts revenue.
+  coalesce(sum(oi.quantity) filter (where o.id is not null), 0)                          as units_sold,
+  coalesce(round(sum(oi.quantity * oi.price) filter (where o.id is not null), 2), 0)     as revenue,
+  coalesce(round(sum(oi.quantity * (oi.price - p.cost)) filter (where o.id is not null), 2), 0) as profit
 from products p
 join categories c on c.id = p.category_id
 left join order_items oi on oi.product_id = p.id
@@ -97,12 +99,81 @@ from customers cu
 left join orders o on o.customer_id = cu.id
 group by cu.id, cu.name, cu.city, cu.state;
 
+-- ============================================================
+-- MONTH-GRAIN summaries — power the GLOBAL DATE FILTER.
+-- These keep the DATE (month) dimension so the dashboard can
+-- re-aggregate any period in the browser. Tiny (a few hundred rows).
+-- ============================================================
+drop table if exists cat_month    cascade;
+drop table if exists state_month  cascade;
+drop table if exists status_month cascade;
+
+-- revenue per (month, category)  -> drives Category chart when filtered
+create table cat_month as
+select date_trunc('month', o.order_date)::date as month,
+       c.name                                  as category,
+       count(distinct o.id)                    as orders,
+       sum(oi.quantity)                        as units,
+       round(sum(oi.quantity * oi.price), 2)   as revenue
+from order_items oi
+join orders   o on o.id = oi.order_id and o.status not in ('cancelled','returned')
+join products p on p.id = oi.product_id
+join categories c on c.id = p.category_id
+group by 1, 2;
+
+-- revenue per (month, state)  -> drives Geographic chart when filtered
+create table state_month as
+select date_trunc('month', order_date)::date as month,
+       state,
+       count(*) filter (where status not in ('cancelled','returned')) as orders,
+       round(sum(total) filter (where status not in ('cancelled','returned')), 2) as revenue
+from orders
+group by 1, 2;
+
+-- order count per (month, status)  -> drives Funnel/status when filtered
+create table status_month as
+select date_trunc('month', order_date)::date as month,
+       status,
+       count(*) as orders
+from orders
+group by 1, 2;
+
+-- revenue per (month, product)  -> drives period-filtered "top products"
+drop table if exists product_month cascade;
+create table product_month as
+select date_trunc('month', o.order_date)::date as month,
+       p.id                                     as product_id,
+       p.name                                   as product,
+       c.name                                   as category,
+       sum(oi.quantity)                         as units,
+       round(sum(oi.quantity * oi.price), 2)    as revenue
+from order_items oi
+join orders   o on o.id = oi.order_id and o.status not in ('cancelled','returned')
+join products p on p.id = oi.product_id
+join categories c on c.id = p.category_id
+group by 1, 2, 3, 4;
+
+-- new customers per month (acquisition)  -> a PERIOD metric for the customer view
+-- (each customer is "new" in exactly one month: the month of their first order)
+drop table if exists cust_acq_month cascade;
+create table cust_acq_month as
+select date_trunc('month', first_order)::date as month,
+       count(*) as new_customers
+from customer_stats
+where first_order is not null
+group by 1;
+
 -- ---------- indexes for fast dashboard reads ----------
 create index idx_daily_day        on daily_sales(day);
 create index idx_catsales_rev     on category_sales(revenue);
 create index idx_prodsales_rev    on product_sales(revenue);
 create index idx_statesales_rev   on state_sales(revenue);
 create index idx_custstats_ltv    on customer_stats(lifetime_value);
+create index idx_catmonth         on cat_month(month);
+create index idx_statemonth       on state_month(month);
+create index idx_statusmonth      on status_month(month);
+create index idx_prodmonth        on product_month(month);
+create index idx_acqmonth         on cust_acq_month(month);
 
 -- ---------- RLS: open these for public read (dashboard) ----------
 alter table daily_sales    enable row level security;
@@ -110,15 +181,30 @@ alter table category_sales enable row level security;
 alter table product_sales  enable row level security;
 alter table state_sales    enable row level security;
 alter table customer_stats enable row level security;
+alter table cat_month      enable row level security;
+alter table state_month    enable row level security;
+alter table status_month   enable row level security;
+alter table product_month  enable row level security;
+alter table cust_acq_month enable row level security;
 create policy "public read" on daily_sales    for select using (true);
 create policy "public read" on category_sales for select using (true);
 create policy "public read" on product_sales  for select using (true);
 create policy "public read" on state_sales    for select using (true);
 create policy "public read" on customer_stats for select using (true);
+create policy "public read" on cat_month      for select using (true);
+create policy "public read" on state_month    for select using (true);
+create policy "public read" on status_month   for select using (true);
+create policy "public read" on product_month  for select using (true);
+create policy "public read" on cust_acq_month for select using (true);
 
 -- ---------- VERIFY ----------
 select 'daily_sales'    as summary, count(*) as rows from daily_sales
 union all select 'category_sales', count(*) from category_sales
 union all select 'product_sales',  count(*) from product_sales
 union all select 'state_sales',    count(*) from state_sales
-union all select 'customer_stats', count(*) from customer_stats;
+union all select 'customer_stats', count(*) from customer_stats
+union all select 'cat_month',      count(*) from cat_month
+union all select 'state_month',    count(*) from state_month
+union all select 'status_month',   count(*) from status_month
+union all select 'product_month',  count(*) from product_month
+union all select 'cust_acq_month', count(*) from cust_acq_month;

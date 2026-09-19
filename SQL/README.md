@@ -18,7 +18,8 @@ Customer distribution is realistic: ~34% never buy, ~26% one-time, ~40% repeat
 (with a few high-volume "whale" customers). ~13,000 customers are paying.
 
 ## Expected result after `02`
-`daily_sales≈1450, category_sales=8, product_sales=200, state_sales=15, customer_stats=20000`.
+`daily_sales≈1450, category_sales=8, product_sales=200, state_sales=15, customer_stats=20000,
+cat_month≈390, state_month≈725, status_month≈150`.
 
 ## Tables
 
@@ -31,10 +32,13 @@ Core (raw "fact" layer):
 
 Reporting (pre-aggregated "mart" layer, built by `02`):
 - `daily_sales` — one row per day → trends & KPIs
-- `category_sales` — one row per category → category breakdown
+- `category_sales` — one row per category → category breakdown (all-time)
 - `product_sales` — one row per product → best/worst sellers
-- `state_sales` — one row per state → geographic map
+- `state_sales` — one row per state → geographic map (all-time)
 - `customer_stats` — one row per customer → CLV, new vs returning
+- `cat_month` — one row per (month, category) → Category chart under the global date filter
+- `state_month` — one row per (month, state) → Geographic chart under the global filter
+- `status_month` — one row per (month, status) → Funnel/status under the global filter
 
 ## Notes
 - RLS is ON; all tables have a `public read` policy (sandbox data only — not real user data).
