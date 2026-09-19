@@ -166,6 +166,14 @@
   .cmprow:last-child{border-bottom:0;}
   .cmprow .cl{color:var(--muted);} .cmprow .cvals{font-weight:700;font-variant-numeric:tabular-nums;}
 
+  /* cohort retention triangle */
+  .cohwrap{overflow-x:auto;-ms-overflow-style:none;scrollbar-width:none;}
+  .cohwrap::-webkit-scrollbar{display:none;}
+  .cohrow{display:grid;grid-template-columns:46px repeat(12,minmax(24px,1fr));gap:2px;align-items:center;margin-bottom:2px;}
+  .cohrow .clab{font-size:9.5px;color:var(--muted);font-weight:600;white-space:nowrap;}
+  .cohrow .chd{font-size:8.5px;color:var(--faint);text-align:center;}
+  .ccell{aspect-ratio:1;border-radius:2px;display:grid;place-items:center;font-size:8px;font-weight:700;}
+
   /* ===== DARK MODE ===== */
   :root[data-theme="dark"]{
     --bg:#0f1117; --surface:#181b23; --surface-2:#20242e; --line:#2a2f3a;
@@ -372,6 +380,14 @@
         <div class="head"><h3>Who your customers are</h3><span class="hint" id="rfmHint"></span></div>
         <div id="rfmState" class="state"><div class="spinner"></div>Loading…</div>
         <div class="seglist" id="rfmList"></div>
+      </div>
+
+      <!-- cohort retention -->
+      <div class="section-title">Cohort retention <span class="tag-static">lifetime</span></div>
+      <div class="card">
+        <div class="head"><h3>Do customers come back?</h3><span class="hint">% active · months after joining</span></div>
+        <div id="cohState" class="state"><div class="spinner"></div>Loading…</div>
+        <div class="cohwrap"><div id="cohort"></div></div>
       </div>
     </section>
   </main>
@@ -856,6 +872,37 @@ async function renderRFM(){
       <div class="segbar-bg"><div class="segbar" style="width:${Math.max(w,8)}%;background:${col}">${num(r.customers)}</div></div></div>`;
   }).join("");
 }
+let COHORT=[];
+async function renderCohort(){
+  try{ COHORT=await fetchAll("cohort_retention?select=cohort_month,months_since,active&order=cohort_month.asc"); }
+  catch(e){ document.getElementById("cohState").textContent="Cohort data unavailable — run 06_cohort.sql."; return; }
+  const byC=new Map();
+  for(const r of COHORT){ const c=r.cohort_month.slice(0,7);
+    if(!byC.has(c)) byC.set(c,{}); byC.get(c)[+r.months_since]=+r.active; }
+  const cohorts=[...byC.keys()].sort();
+  const show=cohorts.slice(-12);           // last 12 cohorts
+  const MAX=11;
+  document.getElementById("cohState").style.display="none";
+  let html='<div class="cohrow"><span class="clab"></span>';
+  for(let m=0;m<=MAX;m++) html+=`<span class="chd">${m}</span>`;
+  html+='</div>';
+  for(const c of show){
+    const row=byC.get(c), size=row[0]||0;
+    html+=`<div class="cohrow"><span class="clab">${labelMonth(c)}</span>`;
+    for(let m=0;m<=MAX;m++){
+      const v=row[m];
+      if(v===undefined){ html+='<span class="ccell" style="background:transparent"></span>'; continue; }
+      const pct=size?Math.round(v/size*100):0;
+      const a=pct>=100?1:(pct<=0?0:0.12+pct/100*0.88);
+      const bg=a===0?"var(--surface-2)":`rgba(22,163,74,${a.toFixed(2)})`;
+      const txt=pct>=8?pct:"";
+      const col=pct>=50?"#fff":"#0a3d1f";
+      html+=`<span class="ccell" style="background:${bg};color:${col}" title="${labelMonth(c)} · +${m} mo · ${pct}%">${txt}</span>`;
+    }
+    html+='</div>';
+  }
+  document.getElementById("cohort").innerHTML=html;
+}
 async function renderStock(){
   const rows=await fetchOne("product_sales?select=product,stock,units_sold&order=units_sold.desc");
   const low=rows.filter(r=>+r.stock<120).slice(0,8);
@@ -967,7 +1014,7 @@ document.getElementById("csvBtn").addEventListener("click",exportCSV);
     document.getElementById("cmpB").addEventListener("change",renderCompare);
     renderCompare();
 
-    await Promise.all([ loadCustomers(), renderRFM(), renderStock() ]);
+    await Promise.all([ loadCustomers(), renderRFM(), renderStock(), renderCohort() ]);
   }catch(e){ showError(e.message||e); }
 })();
 </script>
