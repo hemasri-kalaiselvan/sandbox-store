@@ -115,6 +115,29 @@
   .nav a{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
     font-size:10.5px;color:var(--muted);text-decoration:none;padding:4px 12px;font-weight:600;}
   .nav a .ic{font-size:18px;line-height:1;} .nav a.active{color:var(--accent);}
+
+  /* metric toggle (Revenue / Profit) */
+  .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:9px;padding:2px;gap:2px;}
+  .segbtn{font-size:11px;font-weight:600;color:var(--muted);border:0;background:transparent;
+    padding:5px 11px;border-radius:7px;cursor:pointer;}
+  .segbtn.active{background:var(--accent);color:#fff;}
+
+  /* shopping heatmap */
+  .heat{display:flex;flex-direction:column;gap:3px;}
+  .heatrow{display:grid;grid-template-columns:30px repeat(24,1fr);gap:2px;align-items:center;}
+  .heatrow .hlab{font-size:10px;color:var(--muted);font-weight:600;}
+  .heatcell{aspect-ratio:1;border-radius:2px;background:var(--surface-2);}
+  .heataxis{display:grid;grid-template-columns:30px repeat(24,1fr);gap:2px;margin-top:4px;}
+  .heataxis span{font-size:8.5px;color:var(--faint);text-align:center;}
+
+  /* rfm segment rows */
+  .seglist{display:flex;flex-direction:column;gap:9px;}
+  .segrow .stop{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px;}
+  .segrow .sname{font-weight:600;} .segrow .scnt{color:var(--muted);font-variant-numeric:tabular-nums;}
+  .segbar-bg{height:22px;background:var(--surface-2);border-radius:7px;overflow:hidden;}
+  .segbar{height:100%;border-radius:7px;display:flex;align-items:center;justify-content:flex-end;
+    padding-right:8px;color:#fff;font-size:11px;font-weight:700;min-width:30px;}
 </style>
 </head>
 <body>
@@ -164,9 +187,13 @@
 
     <!-- SALES: category / products / geographic -->
     <section id="sec-category">
-      <div class="section-title">Revenue by category · <span id="catPeriod">all time</span></div>
+      <div class="section-title">By category · <span id="catPeriod">all time</span></div>
       <div class="card">
-        <div class="head"><h3>Which categories sell</h3><span class="hint" id="catHint">loading…</span></div>
+        <div class="head"><h3 id="catTitle">Revenue by category</h3>
+          <div class="seg" id="catToggle">
+            <button class="segbtn active" data-metric="revenue">Revenue</button>
+            <button class="segbtn" data-metric="profit">Profit</button>
+          </div></div>
         <div class="chart-wrap" style="height:280px">
           <div id="catState" class="state"><div class="spinner"></div>Loading…</div>
           <canvas id="catChart" style="display:none"></canvas>
@@ -178,6 +205,14 @@
         <div class="head"><h3>Top products by revenue</h3><span class="hint" id="prodHint">top 8 of 200</span></div>
         <div id="prodState" class="state"><div class="spinner"></div>Loading…</div>
         <div class="plist" id="prodList"></div>
+      </div>
+
+      <!-- stock alerts (all-time sales vs current stock) -->
+      <div class="section-title">Stock alerts <span class="tag-static">popular · low stock</span></div>
+      <div class="card">
+        <div class="head"><h3>Restock soon</h3><span class="hint">top sellers running low</span></div>
+        <div id="stockState" class="state"><div class="spinner"></div>Loading…</div>
+        <div class="plist" id="stockList"></div>
       </div>
 
       <div class="section-title" id="sec-geo">Revenue by state · <span id="geoPeriod">all time</span></div>
@@ -211,6 +246,20 @@
         <div class="head"><h3>Status breakdown</h3><span class="hint" id="statusHint"></span></div>
         <div class="chart-wrap"><canvas id="statusChart"></canvas></div>
       </div>
+
+      <div class="section-title">Payment methods · <span id="payPeriod">all time</span></div>
+      <div class="card">
+        <div class="head"><h3>How customers pay</h3><span class="hint" id="payHint"></span></div>
+        <div class="chart-wrap"><canvas id="payChart"></canvas></div>
+      </div>
+
+      <div class="section-title">When customers shop <span class="tag-static">all time</span></div>
+      <div class="card">
+        <div class="head"><h3>Orders by day &amp; hour</h3><span class="hint">darker = busier</span></div>
+        <div id="heatState" class="state"><div class="spinner"></div>Loading…</div>
+        <div class="heat" id="heat"></div>
+        <div class="heataxis" id="heatAxis"></div>
+      </div>
     </section>
 
     <!-- CUSTOMERS -->
@@ -243,6 +292,14 @@
         <div class="head"><h3>Most valuable customers</h3><span class="hint">top 8</span></div>
         <div id="topCustState" class="state"><div class="spinner"></div>Loading…</div>
         <div class="plist" id="topCustList"></div>
+      </div>
+
+      <!-- RFM segmentation -->
+      <div class="section-title">Customer segments <span class="tag-static">RFM · lifetime</span></div>
+      <div class="card">
+        <div class="head"><h3>Who your customers are</h3><span class="hint" id="rfmHint"></span></div>
+        <div id="rfmState" class="state"><div class="spinner"></div>Loading…</div>
+        <div class="seglist" id="rfmList"></div>
       </div>
     </section>
   </main>
@@ -309,7 +366,11 @@ function labelMonth(ym){ const [y,m]=ym.split("-");
   return new Date(y,m-1).toLocaleString("en-US",{month:"short"})+" "+y.slice(2); }
 
 /* ---------- global state + caches ---------- */
-let DAILY=[], CATM=[], STM=[], STATM=[], PRODM=[], CACQ=[];   // month-grain caches
+let DAILY=[], CATM=[], STM=[], STATM=[], PRODM=[], CACQ=[], PAYM=[], HDOW=[];   // caches
+let catMetric="revenue";   // Category chart toggle: revenue | profit
+const SEG_COLORS={"Champions":"#16a34a","Loyal":"#3b82f6","Big spenders":"#8b5cf6",
+  "New / promising":"#14b8a6","At risk":"#f59e0b","Hibernating":"#94a3b8"};
+const PAY_COLORS={"UPI":"#6366f1","Card":"#3b82f6","COD":"#f59e0b","Wallet":"#14b8a6","NetBanking":"#8b5cf6"};
 let ANCHOR_YM="", FIRST_YM="";
 let PERIOD="all";
 const CH={};   // chart instances (destroy before redraw)
@@ -366,35 +427,72 @@ function renderOverview(b){
   for(const d of DAILY){ if(d.day>=d0&&d.day<=d1){ const m=d.day.slice(0,7);
     byM.set(m,(byM.get(m)||0)+(+d.revenue||0)); } }
   const months=[...byM.keys()].sort();
+  const actual=months.map(m=>byM.get(m)/1e7);   // ₹Cr
   document.getElementById("trendState").style.display="none";
   document.getElementById("trendChart").style.display="block";
-  document.getElementById("trendHint").textContent=months.length+" months";
+
+  // --- 3-month forecast (linear fit), only when enough history (all / last12) ---
+  let labels=months.map(labelMonth);
+  let actualData=[...actual], fcData=null;
+  const canForecast=(PERIOD==="all"||PERIOD==="last12") && actual.length>=6;
+  if(canForecast){
+    const n=actual.length, xs=[...Array(n).keys()];
+    const sx=xs.reduce((a,x)=>a+x,0), sy=actual.reduce((a,y)=>a+y,0);
+    const sxx=xs.reduce((a,x)=>a+x*x,0), sxy=xs.reduce((a,x,i)=>a+x*actual[i],0);
+    const slope=(n*sxy-sx*sy)/(n*sxx-sx*sx), intc=(sy-slope*sx)/n;
+    const proj=[1,2,3].map(k=>Math.max(0,slope*(n-1+k)+intc));
+    let ym=months[months.length-1];
+    for(let k=0;k<3;k++){ ym=ymAdd(ym,1); labels.push(labelMonth(ym)); }
+    actualData=[...actual,null,null,null];
+    fcData=[...Array(n-1).fill(null), actual[n-1], ...proj];  // connect from last actual
+  }
+  document.getElementById("trendHint").textContent=months.length+" months"+(canForecast?" · +3 forecast":"");
+
   const cv=document.getElementById("trendChart"), ctx=cv.getContext("2d");
   const g=ctx.createLinearGradient(0,0,0,230);
   g.addColorStop(0,"rgba(99,102,241,.28)"); g.addColorStop(1,"rgba(99,102,241,0)");
   if(CH.trend) CH.trend.destroy();
-  CH.trend=new Chart(ctx,{type:"line",
-    data:{labels:months.map(labelMonth),datasets:[{data:months.map(m=>byM.get(m)/1e7),
-      borderColor:"#6366f1",borderWidth:2,tension:.35,fill:true,backgroundColor:g,pointRadius:0,pointHoverRadius:5}]},
+  const ds=[{data:actualData,label:"Actual",borderColor:"#6366f1",borderWidth:2,tension:.35,
+      fill:true,backgroundColor:g,pointRadius:0,pointHoverRadius:5,spanGaps:false}];
+  if(fcData) ds.push({data:fcData,label:"Forecast",borderColor:"#94a3b8",borderWidth:2,
+      borderDash:[5,4],tension:.2,fill:false,pointRadius:0,pointHoverRadius:5});
+  CH.trend=new Chart(ctx,{type:"line",data:{labels,datasets:ds},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>"₹"+c.parsed.y.toFixed(2)+" Cr"}}},
+      plugins:{legend:{display:!!fcData,labels:{font:{size:10},color:"#6b7280",boxWidth:14,padding:8}},
+        tooltip:{callbacks:{label:c=>(c.dataset.label||"")+": ₹"+c.parsed.y.toFixed(2)+" Cr"}}},
       scales:{x:{grid:{display:false},ticks:{color:"#9aa0ac",font:{size:10},maxTicksLimit:7}},
         y:{grid:{color:"#eef0f4"},ticks:{color:"#9aa0ac",font:{size:10},callback:v=>"₹"+v+"Cr"},beginAtZero:true}}}});
 }
+let CAT_BOUNDS=null;   // remember last period so the toggle can re-render
 function renderCategory(b){
-  const m=aggBy(CATM,b.cur[0],b.cur[1],"category","revenue");
-  const rows=[...m.entries()].map(([category,revenue])=>({category,revenue})).sort((a,z)=>z.revenue-a.revenue);
+  CAT_BOUNDS=b;
+  const m=aggBy(CATM,b.cur[0],b.cur[1],"category",catMetric);
+  const rows=[...m.entries()].map(([category,val])=>({category,val})).sort((a,z)=>z.val-a.val);
   document.getElementById("catState").style.display="none";
   document.getElementById("catChart").style.display="block";
-  document.getElementById("catHint").textContent=rows.length+" categories";
+  document.getElementById("catTitle").textContent=(catMetric==="profit"?"Profit":"Revenue")+" by category";
   if(CH.cat) CH.cat.destroy();
   CH.cat=new Chart(document.getElementById("catChart").getContext("2d"),{type:"bar",
-    data:{labels:rows.map(r=>r.category),datasets:[{data:rows.map(r=>r.revenue/1e7),
+    data:{labels:rows.map(r=>r.category),datasets:[{data:rows.map(r=>r.val/1e7),
       backgroundColor:rows.map(r=>CAT_COLORS[r.category]||"#94a3b8"),borderRadius:6,barThickness:18}]},
     options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>"₹"+c.parsed.x.toFixed(1)+" Cr"}}},
       scales:{x:{grid:{color:"#eef0f4"},ticks:{color:"#9aa0ac",font:{size:10},callback:v=>"₹"+v+"Cr"},beginAtZero:true},
         y:{grid:{display:false},ticks:{color:"#171a24",font:{size:11}}}}}});
+}
+/* PAYMENT MIX — period-filtered donut */
+function renderPayment(b){
+  const m=aggBy(PAYM,b.cur[0],b.cur[1],"payment_method","orders");
+  const rows=[...m.entries()].map(([k,v])=>({k,v})).sort((a,z)=>z.v-a.v);
+  const total=rows.reduce((s,r)=>s+r.v,0);
+  document.getElementById("payHint").textContent=num(total)+" orders";
+  if(CH.pay) CH.pay.destroy();
+  CH.pay=new Chart(document.getElementById("payChart").getContext("2d"),{type:"doughnut",
+    data:{labels:rows.map(r=>r.k),datasets:[{data:rows.map(r=>r.v),
+      backgroundColor:rows.map(r=>PAY_COLORS[r.k]||"#94a3b8"),borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:"60%",
+      plugins:{legend:{position:"right",labels:{font:{size:11},color:"#171a24",boxWidth:11,padding:9}},
+        tooltip:{callbacks:{label:c=>c.label+": "+num(c.parsed)+" ("+(total?c.parsed/total*100:0).toFixed(1)+"%)"}}}}});
 }
 function renderGeo(b){
   const rev=aggBy(STM,b.cur[0],b.cur[1],"state","revenue");
@@ -493,10 +591,57 @@ function renderAcquisition(b){
 /* apply the global period to every date-aware section */
 function applyPeriod(p){
   PERIOD=p; const b=periodBounds(p);
-  ["ovPeriod","catPeriod","geoPeriod","funPeriod","prodPeriod","acqPeriod"]
+  ["ovPeriod","catPeriod","geoPeriod","funPeriod","prodPeriod","acqPeriod","payPeriod"]
     .forEach(id=>document.getElementById(id).textContent=PLABEL[p]);
   renderOverview(b); renderCategory(b); renderGeo(b); renderFunnel(b);
-  renderProducts(b); renderAcquisition(b);
+  renderProducts(b); renderAcquisition(b); renderPayment(b);
+}
+
+/* ---------- static analytics (all-time; rendered once) ---------- */
+function renderHeatmap(){
+  const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  let max=0; const grid={};
+  for(const r of HDOW){ grid[r.dow+"-"+r.hour]=+r.orders||0; if(+r.orders>max) max=+r.orders; }
+  document.getElementById("heatState").style.display="none";
+  let html="";
+  for(let d=0;d<7;d++){
+    html+=`<div class="heatrow"><span class="hlab">${days[d]}</span>`;
+    for(let h=0;h<24;h++){ const v=grid[d+"-"+h]||0; const a=max?v/max:0;
+      const bg=a===0?"var(--surface-2)":`rgba(99,102,241,${(0.12+a*0.88).toFixed(2)})`;
+      html+=`<div class="heatcell" style="background:${bg}" title="${days[d]} ${h}:00 · ${num(v)} orders"></div>`; }
+    html+="</div>";
+  }
+  document.getElementById("heat").innerHTML=html;
+  let ax='<span></span>';
+  for(let h=0;h<24;h++) ax+=`<span>${(h%6===0||h===23)?h:""}</span>`;
+  document.getElementById("heatAxis").innerHTML=ax;
+}
+async function renderRFM(){
+  const rows=await fetchOne("rfm_segments?select=segment,customers,revenue,avg_value&order=revenue.desc");
+  const max=Math.max(...rows.map(r=>+r.customers),1);
+  document.getElementById("rfmState").style.display="none";
+  document.getElementById("rfmHint").textContent=rows.length+" segments";
+  document.getElementById("rfmList").innerHTML=rows.map(r=>{
+    const w=Math.round(+r.customers/max*100), col=SEG_COLORS[r.segment]||"#94a3b8";
+    return `<div class="segrow"><div class="stop"><span class="sname">${r.segment}</span>
+      <span class="scnt">${num(r.customers)} · ${money(r.revenue)} · avg ${money(r.avg_value)}</span></div>
+      <div class="segbar-bg"><div class="segbar" style="width:${Math.max(w,8)}%;background:${col}">${num(r.customers)}</div></div></div>`;
+  }).join("");
+}
+async function renderStock(){
+  const rows=await fetchOne("product_sales?select=product,stock,units_sold&order=units_sold.desc");
+  const low=rows.filter(r=>+r.stock<120).slice(0,8);
+  const maxU=Math.max(...low.map(r=>+r.units_sold),1);
+  document.getElementById("stockState").style.display="none";
+  document.getElementById("stockList").innerHTML=(low.length?low:rows.slice(0,6)).map(r=>{
+    const w=Math.round(+r.units_sold/maxU*100);
+    const danger=+r.stock<40;
+    return `<div class="prow"><div class="prank" style="color:${danger?'#dc2626':'#f59e0b'}">●</div>
+      <div class="pmain"><div class="pname">${r.product}</div>
+      <div class="pbar-bg"><div class="pbar" style="width:${w}%"></div></div></div>
+      <div class="pmeta"><div class="pval" style="color:${danger?'#dc2626':'inherit'}">${num(r.stock)} left</div>
+      <div class="ptag">${num(r.units_sold)} sold</div></div></div>`;
+  }).join("");
 }
 
 /* ---------- LIFETIME customer value (not period-filtered, by definition) ---------- */
@@ -543,25 +688,37 @@ document.querySelectorAll("#globalChips .chip").forEach(chip=>{
     applyPeriod(chip.dataset.period);
   });
 });
+/* ---------- category Revenue/Profit toggle ---------- */
+document.querySelectorAll("#catToggle .segbtn").forEach(btn=>{
+  btn.addEventListener("click",()=>{
+    document.querySelectorAll("#catToggle .segbtn").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    catMetric=btn.dataset.metric;
+    if(CAT_BOUNDS) renderCategory(CAT_BOUNDS);
+  });
+});
 
 /* ---------- boot ---------- */
 (async()=>{
   try{
-    const [daily,catm,stm,statm,prodm,cacq,customers]=await Promise.all([
+    const [daily,catm,stm,statm,prodm,cacq,paym,hdow,customers]=await Promise.all([
       fetchAll("daily_sales?select=day,orders,valid_orders,revenue&order=day.asc"),
-      fetchAll("cat_month?select=month,category,revenue&order=month.asc"),
+      fetchAll("cat_month?select=month,category,revenue,profit&order=month.asc"),
       fetchAll("state_month?select=month,state,orders,revenue&order=month.asc"),
       fetchAll("status_month?select=month,status,orders&order=month.asc"),
       fetchAll("product_month?select=month,product,revenue&order=month.asc"),
       fetchAll("cust_acq_month?select=month,new_customers&order=month.asc"),
+      fetchAll("payment_month?select=month,payment_method,orders&order=month.asc"),
+      fetchAll("hour_dow?select=dow,hour,orders"),
       countTable("customer_stats")
     ]);
-    DAILY=daily; CATM=catm; STM=stm; STATM=statm; PRODM=prodm; CACQ=cacq;
+    DAILY=daily; CATM=catm; STM=stm; STATM=statm; PRODM=prodm; CACQ=cacq; PAYM=paym; HDOW=hdow;
     FIRST_YM=daily[0].day.slice(0,7); ANCHOR_YM=daily[daily.length-1].day.slice(0,7);
     document.getElementById("kCusV").textContent=num(customers);
     document.getElementById("kCusV").classList.remove("skeleton");
-    applyPeriod("all");                 // initial global view (drives products + acquisition too)
-    await loadCustomers();              // lifetime value block
+    applyPeriod("all");                 // drives overview, category, geo, funnel, products, acquisition, payment
+    renderHeatmap();                    // static all-time views
+    await Promise.all([ loadCustomers(), renderRFM(), renderStock() ]);
   }catch(e){ showError(e.message||e); }
 })();
 </script>
