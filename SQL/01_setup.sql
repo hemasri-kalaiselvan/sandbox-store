@@ -151,55 +151,59 @@ cross join lateral (
          g as gref
 ) r;
 
--- ---------- STEP 4: orders (~140k, realistic per-customer counts) ----------
--- Order COUNT per customer follows a realistic heavy-tailed distribution:
---   ~34% never buy, ~26% one-time, ~40% repeat (including a few high-volume
---   "whales"). This is what makes the new-vs-returning analytics meaningful.
--- Order DATES still carry the growth trend + festival (Diwali) spikes:
---   ~20% of orders land in an Oct/Nov festival window, the rest are
---   growth-skewed toward recent years. City/state come from the customer.
--- 'co' = per-customer (random() once per customer -> its order count).
--- 'd'  = per-order (references co.cid + g -> per-order date/status/payment).
+-- ---------- STEP 4: orders (~140k, realistic counts + RETENTION timing) ----------
+-- Order COUNT per customer is a heavy-tailed distribution:
+--   ~34% never buy, ~26% one-time, ~40% repeat (a few high-volume "whales").
+-- Order TIMING models real retention: each customer gets an ACQUISITION date
+--   (join_ts, mildly recent-skewed -> growth trend). Their FIRST order is at
+--   join (defines the cohort); each REPEAT order lands AFTER join with an
+--   EXPONENTIAL decay (most repeats soon after joining, fewer later) -> this is
+--   what makes the cohort-retention triangle actually decay. ~18% of repeats
+--   snap to a Diwali (Oct/Nov) window instead -> festival spikes survive.
+-- 'co' = per-customer (join date, order count, usable time window).
+-- 'ts' = per-order date (references g + co); g=1 is the first order (month 0).
 insert into orders(customer_id, order_date, status, payment_method, city, state, total)
 select
-  co.cid, d.ts,
+  co.cid, ts.d,
   case
-    when d.ts > now() - interval '3 days'  then (array['processing','shipped','processing'])[1+floor(d.sr*3)::int]
-    when d.ts > now() - interval '12 days' then (array['shipped','delivered','shipped'])[1+floor(d.sr*3)::int]
+    when ts.d > now() - interval '3 days'  then (array['processing','shipped','processing'])[1+floor(random()*3)::int]
+    when ts.d > now() - interval '12 days' then (array['shipped','delivered','shipped'])[1+floor(random()*3)::int]
     else (array['delivered','delivered','delivered','delivered','delivered',
-                'delivered','delivered','delivered','cancelled','returned'])[1+floor(d.sr*10)::int]
+                'delivered','delivered','delivered','cancelled','returned'])[1+floor(random()*10)::int]
   end,
-  (array['UPI','UPI','UPI','UPI','Card','Card','COD','COD','Wallet','NetBanking'])[d.pay_i],
+  (array['UPI','UPI','UPI','UPI','Card','Card','COD','COD','Wallet','NetBanking'])[1+floor(random()*10)::int],
   co.city, co.state, 0
 from (
-  select id as cid, city, state,
-    case
-      when r < 0.34 then 0                                          -- never buys
-      when r < 0.60 then 1                                          -- one-time
-      when r < 0.93 then 2 + floor(power(random(),1.8)*10)::int     -- light repeat 2..11
-      else 12 + floor(power(random(),2.8)*230)::int                 -- whales 12..241
-    end as ncnt
-  from (select id, city, state, random() as r from customers) x
+  select cid, city, state, join_ts, ncnt,
+    greatest(0, (extract(epoch from (now()-join_ts))/86400)::int - 30) as max_days
+  from (
+    select cu.id as cid, cu.city, cu.state,
+      (timestamp '2022-09-19' + (1461 * power(random(),0.85))::int * interval '1 day') as join_ts,
+      case
+        when rr < 0.34 then 0                                       -- never buys
+        when rr < 0.60 then 1                                       -- one-time
+        when rr < 0.93 then 2 + floor(power(random(),1.8)*10)::int  -- light repeat 2..11
+        else 12 + floor(power(random(),2.8)*230)::int               -- whales 12..241
+      end as ncnt
+    from (select id, city, state, random() as rr from customers) cu
+  ) base
 ) co
-cross join lateral generate_series(1, co.ncnt) g
+cross join generate_series(1, co.ncnt) g
 cross join lateral (
-  select
-    ( case when random() < 0.20
-        then (array[date '2022-10-15', date '2023-11-03', date '2024-10-24', date '2025-10-21'])[
-               case when random()<0.15 then 1 when random()<0.35 then 2
-                    when random()<0.65 then 3 else 4 end]
-             + floor(random()*22)::int * interval '1 day'
-             + (18+floor(random()*5))::int * interval '1 hour'
-             + floor(random()*60)::int * interval '1 minute'
-        else timestamp '2022-09-19'
-             + (1461 * greatest(random(),random()))::int * interval '1 day'
-             + (case when random()<0.5 then 18+floor(random()*5) else 9+floor(random()*9) end)::int * interval '1 hour'
-             + floor(random()*60)::int * interval '1 minute'
-      end ) as ts,
-    (1+floor(random()*10))::int as pay_i,
-    random() as sr,
-    co.cid, g
-) d;
+  select least(
+    co.join_ts
+    + ( case
+          when g = 1 then 0                                          -- first order = acquisition month
+          when random() < 0.18 then                                  -- festival (calendar) order, >= join
+            least(co.max_days, greatest(0,
+              (extract(epoch from ((array[timestamp '2022-10-20', timestamp '2023-11-05',
+                  timestamp '2024-10-26', timestamp '2025-10-22'])[1+floor(random()*4)::int] - co.join_ts))/86400)::int))
+          else least(co.max_days, (floor(-ln(random())*3.0))::int * 30)   -- exp decay after join
+        end ) * interval '1 day'
+    + floor(random()*20)::int * interval '1 day'
+    + (9 + floor(random()*13))::int * interval '1 hour'
+  , now() - interval '1 hour') as d
+) ts;
 
 -- ---------- STEP 6: order items (1-3 per order) ----------
 -- FIX: correlated lateral 'pk' (references o.id, n) + WHERE filter
