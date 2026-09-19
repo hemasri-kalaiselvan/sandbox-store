@@ -108,13 +108,14 @@ drop table if exists cat_month    cascade;
 drop table if exists state_month  cascade;
 drop table if exists status_month cascade;
 
--- revenue per (month, category)  -> drives Category chart when filtered
+-- revenue + PROFIT per (month, category)  -> drives Category chart (revenue/profit toggle)
 create table cat_month as
 select date_trunc('month', o.order_date)::date as month,
        c.name                                  as category,
        count(distinct o.id)                    as orders,
        sum(oi.quantity)                        as units,
-       round(sum(oi.quantity * oi.price), 2)   as revenue
+       round(sum(oi.quantity * oi.price), 2)             as revenue,
+       round(sum(oi.quantity * (oi.price - p.cost)), 2)  as profit
 from order_items oi
 join orders   o on o.id = oi.order_id and o.status not in ('cancelled','returned')
 join products p on p.id = oi.product_id
@@ -163,6 +164,61 @@ from customer_stats
 where first_order is not null
 group by 1;
 
+-- ============================================================
+-- EXTRA analytics summaries (RFM, payment mix, shopping heatmap)
+-- ============================================================
+
+-- RFM segmentation: score each paying customer 1..3 on Recency (last_order),
+-- Frequency (orders), Monetary (lifetime_value) via tertiles, then map to a
+-- named segment. Output is one row per segment (customers, revenue, avg value).
+drop table if exists rfm_segments cascade;
+create table rfm_segments as
+with scored as (
+  select customer_id, lifetime_value, orders,
+    ntile(3) over (order by last_order)     as r,  -- 3 = most recent
+    ntile(3) over (order by orders)          as f,  -- 3 = most frequent
+    ntile(3) over (order by lifetime_value)  as m   -- 3 = highest value
+  from customer_stats
+  where orders >= 1
+),
+labelled as (
+  select *,
+    case
+      when r=3 and f=3          then 'Champions'
+      when f=3                  then 'Loyal'
+      when m=3                  then 'Big spenders'
+      when r=3                  then 'New / promising'
+      when r=1 and f>=2         then 'At risk'
+      else                           'Hibernating'
+    end as segment
+  from scored
+)
+select segment,
+       count(*)                        as customers,
+       round(sum(lifetime_value))      as revenue,
+       round(avg(lifetime_value))      as avg_value
+from labelled
+group by segment;
+
+-- payment mix per (month, method)  -> period-filterable payment breakdown
+drop table if exists payment_month cascade;
+create table payment_month as
+select date_trunc('month', order_date)::date as month,
+       payment_method,
+       count(*)                                                    as orders,
+       round(sum(total) filter (where status not in ('cancelled','returned')), 2) as revenue
+from orders
+group by 1, 2;
+
+-- orders by weekday x hour  -> "when do customers shop" heatmap (168 rows)
+drop table if exists hour_dow cascade;
+create table hour_dow as
+select extract(dow  from order_date)::int as dow,   -- 0=Sun .. 6=Sat
+       extract(hour from order_date)::int as hour,   -- 0..23
+       count(*) as orders
+from orders
+group by 1, 2;
+
 -- ---------- indexes for fast dashboard reads ----------
 create index idx_daily_day        on daily_sales(day);
 create index idx_catsales_rev     on category_sales(revenue);
@@ -174,6 +230,8 @@ create index idx_statemonth       on state_month(month);
 create index idx_statusmonth      on status_month(month);
 create index idx_prodmonth        on product_month(month);
 create index idx_acqmonth         on cust_acq_month(month);
+create index idx_paymonth         on payment_month(month);
+create index idx_hourdow          on hour_dow(dow, hour);
 
 -- ---------- RLS: open these for public read (dashboard) ----------
 alter table daily_sales    enable row level security;
@@ -196,6 +254,12 @@ create policy "public read" on state_month    for select using (true);
 create policy "public read" on status_month   for select using (true);
 create policy "public read" on product_month  for select using (true);
 create policy "public read" on cust_acq_month for select using (true);
+alter table rfm_segments   enable row level security;
+alter table payment_month  enable row level security;
+alter table hour_dow       enable row level security;
+create policy "public read" on rfm_segments   for select using (true);
+create policy "public read" on payment_month  for select using (true);
+create policy "public read" on hour_dow       for select using (true);
 
 -- ---------- VERIFY ----------
 select 'daily_sales'    as summary, count(*) as rows from daily_sales
@@ -207,4 +271,7 @@ union all select 'cat_month',      count(*) from cat_month
 union all select 'state_month',    count(*) from state_month
 union all select 'status_month',   count(*) from status_month
 union all select 'product_month',  count(*) from product_month
-union all select 'cust_acq_month', count(*) from cust_acq_month;
+union all select 'cust_acq_month', count(*) from cust_acq_month
+union all select 'rfm_segments',   count(*) from rfm_segments
+union all select 'payment_month',  count(*) from payment_month
+union all select 'hour_dow',       count(*) from hour_dow;

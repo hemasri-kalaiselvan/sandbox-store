@@ -19,7 +19,8 @@ Customer distribution is realistic: ~34% never buy, ~26% one-time, ~40% repeat
 
 ## Expected result after `02`
 `daily_sales≈1450, category_sales=8, product_sales=200, state_sales=15, customer_stats=20000,
-cat_month≈390, state_month≈725, status_month≈150`.
+cat_month≈390, state_month≈725, status_month≈150, product_month≈9500, cust_acq_month=49,
+rfm_segments=6, payment_month≈245, hour_dow≈100` (13 tables total).
 
 ## Tables
 
@@ -36,9 +37,14 @@ Reporting (pre-aggregated "mart" layer, built by `02`):
 - `product_sales` — one row per product → best/worst sellers
 - `state_sales` — one row per state → geographic map (all-time)
 - `customer_stats` — one row per customer → CLV, new vs returning
-- `cat_month` — one row per (month, category) → Category chart under the global date filter
+- `cat_month` — one row per (month, category) incl. profit → Category chart (revenue/profit toggle)
 - `state_month` — one row per (month, state) → Geographic chart under the global filter
 - `status_month` — one row per (month, status) → Funnel/status under the global filter
+- `product_month` — one row per (month, product) → period-filtered top products
+- `cust_acq_month` — new customers per month → customer acquisition (a period metric)
+- `rfm_segments` — one row per RFM segment → customer segmentation
+- `payment_month` — one row per (month, payment method) → payment mix under the filter
+- `hour_dow` — orders per (weekday, hour) → "when customers shop" heatmap
 
 ## Notes
 - RLS is ON; all tables have a `public read` policy (sandbox data only — not real user data).
