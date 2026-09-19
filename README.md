@@ -55,11 +55,22 @@ sandbox-analytics/
 ├── README.md               # this file
 ├── docs/
 │   └── BUILD_JOURNAL.md    # step-by-step "how I built it"
+├── shop.html               # storefront: browse → cart → checkout → place order
 └── sql/
     ├── 01_setup.sql        # schema + realistic data generation
-    ├── 02_summary.sql      # pre-aggregated reporting tables
+    ├── 02_summary.sql      # pre-aggregated reporting tables (13)
+    ├── 03_enable_orders.sql# INSERT policies + source tag so shop.html can write
+    ├── 04_reset_shop_orders.sql  # revert: delete only shop-placed orders
     └── README.md           # SQL run order + table reference
 ```
+
+## Store & live data
+
+`shop.html` places **real orders** into `orders` / `order_items`, tagged
+`source = 'shop'` (preloaded seed data is `source = 'seed'`). The dashboard's
+**"Live · store orders"** card reads those straight from the raw table, so a
+purchase shows up immediately. To wipe shop orders and return to pure seed data,
+run `sql/04_reset_shop_orders.sql` — it deletes only `source = 'shop'` rows.
 
 ## Tech notes
 

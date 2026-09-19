@@ -215,10 +215,10 @@
 
     <!-- OVERVIEW -->
     <section id="sec-overview">
-      <div class="section-title" style="margin-top:8px">🔴 Today · live <span class="tag-static" id="liveRefresh" style="cursor:pointer">↻ refresh</span></div>
+      <div class="section-title" style="margin-top:8px">🔴 Live · store orders <span class="tag-static" id="liveRefresh" style="cursor:pointer">↻ refresh</span></div>
       <div class="tiles" id="liveTiles">
-        <div class="tile"><div class="tv" id="liveOrders">—</div><div class="tl">Orders today</div></div>
-        <div class="tile"><div class="tv" id="liveRev">—</div><div class="tl">Revenue today</div></div>
+        <div class="tile"><div class="tv" id="liveOrders">—</div><div class="tl">Orders placed</div></div>
+        <div class="tile"><div class="tv" id="liveRev">—</div><div class="tl">Revenue</div></div>
         <div class="tile"><div class="tv" id="liveLatest" style="font-size:14px">—</div><div class="tl">Latest order</div></div>
       </div>
 
@@ -796,11 +796,10 @@ function applyPeriod(p){
   renderProducts(b); renderAcquisition(b); renderPayment(b);
 }
 
-/* ---------- LIVE: today's orders straight from the raw table ---------- */
+/* ---------- LIVE: store-placed orders (source=shop) from the raw table ---------- */
 async function loadLive(){
   try{
-    const today=new Date().toISOString().slice(0,10);
-    const rows=await fetchOne(`orders?select=id,total,city,order_date&order_date=gte.${today}&order=id.desc`);
+    const rows=await fetchOne(`orders?select=id,total,city&source=eq.shop&order=id.desc&limit=1000`);
     const rev=rows.reduce((s,r)=>s+(+r.total||0),0);
     document.getElementById("liveOrders").textContent=num(rows.length);
     document.getElementById("liveRev").textContent=money(rev);

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Sandbox Store — Shop</title>
+<style>
+  :root{
+    --bg:#f3f4f8; --surface:#fff; --surface-2:#f6f7fb; --line:#e7e9f0;
+    --text:#171a24; --muted:#6b7280; --faint:#9aa0ac; --accent:#6366f1;
+    --green:#16a34a; --radius:16px; --shadow:0 1px 3px rgba(20,22,40,.05),0 8px 24px rgba(20,22,40,.05);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{background:var(--bg);color:var(--text);display:flex;justify-content:center;}
+  .app{width:100%;max-width:440px;min-height:100vh;position:relative;padding-bottom:20px;overflow-x:hidden;}
+
+  .appbar{position:sticky;top:0;z-index:20;background:#fff;padding:16px 18px;
+    border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#8b5cf6);
+    display:grid;place-items:center;font-weight:800;color:#fff;font-size:17px;}
+  .brand h1{font-size:16px;font-weight:700;} .brand p{font-size:11px;color:var(--muted);}
+  .cartbtn{position:relative;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;
+    padding:9px 12px;font-size:15px;cursor:pointer;}
+  .badge{position:absolute;top:-6px;right:-6px;background:var(--accent);color:#fff;font-size:10px;
+    font-weight:700;min-width:18px;height:18px;border-radius:9px;display:grid;place-items:center;padding:0 4px;}
+
+  .content{padding:14px 14px 8px;}
+  .search{width:100%;font-size:14px;padding:11px 14px;border:1px solid var(--line);border-radius:12px;
+    background:var(--surface);margin-bottom:12px;}
+  .catchips{display:flex;gap:8px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none;}
+  .catchips::-webkit-scrollbar{display:none;}
+  .catchip{flex:none;font-size:12.5px;font-weight:600;color:var(--muted);background:var(--surface);
+    border:1px solid var(--line);border-radius:18px;padding:7px 13px;cursor:pointer;}
+  .catchip.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .pcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:12px;box-shadow:var(--shadow);display:flex;flex-direction:column;}
+  .pthumb{height:96px;border-radius:12px;display:grid;place-items:center;font-size:30px;
+    font-weight:800;color:#fff;margin-bottom:10px;}
+  .pcat{font-size:10px;color:var(--faint);font-weight:600;text-transform:uppercase;letter-spacing:.3px;}
+  .pname{font-size:13px;font-weight:600;line-height:1.3;margin:3px 0 4px;min-height:34px;}
+  .prate{font-size:11px;color:var(--muted);}
+  .pprice{font-size:15px;font-weight:800;margin-top:6px;}
+  .addbtn{margin-top:9px;background:var(--accent);color:#fff;border:0;border-radius:10px;
+    padding:9px;font-size:13px;font-weight:600;cursor:pointer;}
+
+  /* overlay views (cart / checkout / confirm) */
+  .view{display:none;padding:14px;}
+  .view.on{display:block;}
+  .vhead{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+  .back{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:8px 11px;
+    font-size:14px;cursor:pointer;}
+  .vhead h2{font-size:18px;font-weight:700;}
+
+  .citem{display:flex;gap:11px;align-items:center;background:var(--surface);border:1px solid var(--line);
+    border-radius:14px;padding:11px;margin-bottom:10px;box-shadow:var(--shadow);}
+  .cthumb{width:46px;height:46px;border-radius:10px;display:grid;place-items:center;color:#fff;font-weight:800;flex:none;}
+  .cmid{flex:1;min-width:0;} .cmid .n{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cmid .p{font-size:12px;color:var(--muted);}
+  .qty{display:flex;align-items:center;gap:8px;}
+  .qty button{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);
+    font-size:15px;cursor:pointer;} .qty span{min-width:18px;text-align:center;font-weight:700;font-size:13px;}
+
+  .summary{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;
+    box-shadow:var(--shadow);margin-top:6px;}
+  .srow{display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px;color:var(--muted);}
+  .srow.total{font-size:16px;font-weight:800;color:var(--text);margin-top:6px;padding-top:10px;border-top:1px solid var(--line);}
+
+  .field{margin-bottom:12px;} .field label{font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:5px;}
+  .field input,.field select{width:100%;font-size:14px;padding:11px 12px;border:1px solid var(--line);
+    border-radius:11px;background:var(--surface);color:var(--text);}
+  .cta{width:100%;background:var(--accent);color:#fff;border:0;border-radius:13px;padding:14px;
+    font-size:15px;font-weight:700;cursor:pointer;margin-top:6px;}
+  .cta:disabled{opacity:.6;}
+  .muted{font-size:12px;color:var(--faint);text-align:center;margin-top:12px;line-height:1.5;}
+  .empty{text-align:center;color:var(--faint);padding:50px 20px;font-size:14px;}
+  .err{background:#fff1f2;border:1px solid #fecdd3;color:#be123c;border-radius:12px;padding:12px;font-size:13px;margin-bottom:10px;}
+
+  .confirm{text-align:center;padding:30px 16px;}
+  .checkmark{width:74px;height:74px;border-radius:50%;background:#dcfce7;color:var(--green);
+    display:grid;place-items:center;font-size:38px;margin:0 auto 18px;}
+  .confirm h2{font-size:22px;font-weight:800;margin-bottom:6px;}
+  .confirm .onum{font-size:13px;color:var(--muted);margin-bottom:18px;}
+  .confirm .amt{font-size:15px;background:var(--surface-2);border:1px solid var(--line);border-radius:12px;
+    padding:12px;margin-bottom:8px;}
+  .linkbtn{display:inline-block;margin-top:14px;color:var(--accent);font-weight:700;font-size:14px;
+    text-decoration:none;border:1px solid var(--line);border-radius:11px;padding:11px 16px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="appbar">
+    <div class="brand"><div class="logo">S</div>
+      <div><h1>Sandbox Store</h1><p>Shop</p></div></div>
+    <button class="cartbtn" id="cartBtn">🛒<span class="badge" id="cartBadge" style="display:none">0</span></button>
+  </header>
+
+  <!-- CATALOG -->
+  <main class="content" id="catalog">
+    <input class="search" id="search" placeholder="Search products…">
+    <div class="catchips" id="catchips"></div>
+    <div id="gridState" class="empty">Loading products…</div>
+    <div class="grid" id="grid"></div>
+  </main>
+
+  <!-- CART -->
+  <section class="view" id="cartView">
+    <div class="vhead"><button class="back" data-to="catalog">←</button><h2>Your cart</h2></div>
+    <div id="cartItems"></div>
+    <div class="summary" id="cartSummary" style="display:none">
+      <div class="srow"><span>Items</span><span id="sumItems">0</span></div>
+      <div class="srow total"><span>Total</span><span id="sumTotal">₹0</span></div>
+    </div>
+    <button class="cta" id="toCheckout" style="display:none">Checkout</button>
+  </section>
+
+  <!-- CHECKOUT -->
+  <section class="view" id="checkoutView">
+    <div class="vhead"><button class="back" data-to="cartView">←</button><h2>Checkout</h2></div>
+    <div id="coError"></div>
+    <div class="field"><label>Your name</label><input id="coName" placeholder="e.g. Aarav Sharma"></div>
+    <div class="field"><label>Deliver to (city)</label><select id="coCity"></select></div>
+    <div class="field"><label>Payment method</label>
+      <select id="coPay"><option>UPI</option><option>Card</option><option>COD</option><option>Wallet</option><option>NetBanking</option></select></div>
+    <div class="summary">
+      <div class="srow"><span>Items</span><span id="coItems">0</span></div>
+      <div class="srow total"><span>Total to pay</span><span id="coTotal">₹0</span></div>
+    </div>
+    <button class="cta" id="placeBtn">Place order</button>
+    <div class="muted">This places a <b>real order</b> in the database.<br>Open the dashboard afterward to see the numbers update.</div>
+  </section>
+
+  <!-- CONFIRMATION -->
+  <section class="view" id="confirmView">
+    <div class="confirm">
+      <div class="checkmark">✓</div>
+      <h2>Order placed!</h2>
+      <div class="onum" id="confOrder"></div>
+      <div class="amt" id="confAmt"></div>
+      <div class="amt" id="confLive"></div>
+      <a class="linkbtn" href="index.html">📈 Open dashboard →</a><br>
+      <button class="linkbtn" id="shopMore" style="background:none;cursor:pointer;margin-top:12px">Continue shopping</button>
+    </div>
+  </section>
+</div>
+
+<script>
+const SUPABASE_URL="https://vzpzvjxendcacvfstcge.supabase.co";
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6cHp2anhlbmRjYWN2ZnN0Y2dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3NzkwNzEsImV4cCI6MjEwNTM1NTA3MX0.8K9quNMoXc9N4PmIuTERoLHpkMSf9qaFJBkI8nybjzA";
+const H={apikey:SUPABASE_KEY,Authorization:"Bearer "+SUPABASE_KEY};
+const HJSON={...H,"Content-Type":"application/json"};
+const CITIES=[["Mumbai","Maharashtra"],["Delhi","Delhi"],["Bengaluru","Karnataka"],["Hyderabad","Telangana"],
+["Chennai","Tamil Nadu"],["Kolkata","West Bengal"],["Pune","Maharashtra"],["Ahmedabad","Gujarat"],
+["Jaipur","Rajasthan"],["Lucknow","Uttar Pradesh"],["Kochi","Kerala"],["Coimbatore","Tamil Nadu"],
+["Chandigarh","Punjab"],["Bhopal","Madhya Pradesh"],["Surat","Gujarat"],["Nagpur","Maharashtra"],
+["Visakhapatnam","Andhra Pradesh"],["Patna","Bihar"],["Indore","Madhya Pradesh"],["Guwahati","Assam"]];
+const CAT_COLORS={"Electronics":"#6366f1","Fashion":"#ec4899","Home & Kitchen":"#14b8a6",
+"Beauty & Personal Care":"#f59e0b","Sports & Fitness":"#3b82f6","Books":"#8b5cf6","Grocery":"#10b981","Toys & Baby":"#f43f5e"};
+
+let PRODUCTS=[], CATS=[], activeCat="All", cart={};
+const inr=n=>"₹"+Math.round(Number(n)||0).toLocaleString("en-IN");
+
+function loadCart(){ try{ cart=JSON.parse(localStorage.getItem("cart")||"{}"); }catch(e){ cart={}; } }
+function saveCart(){ try{ localStorage.setItem("cart",JSON.stringify(cart)); }catch(e){} }
+function cartCount(){ return Object.values(cart).reduce((s,i)=>s+i.qty,0); }
+function cartTotal(){ return Object.values(cart).reduce((s,i)=>s+i.qty*i.price,0); }
+function updateBadge(){ const c=cartCount(), b=document.getElementById("cartBadge");
+  b.textContent=c; b.style.display=c?"grid":"none"; }
+
+function show(view){ document.querySelectorAll(".view").forEach(v=>v.classList.remove("on"));
+  document.getElementById("catalog").style.display = view==="catalog"?"block":"none";
+  if(view!=="catalog") document.getElementById(view).classList.add("on");
+  window.scrollTo(0,0);
+}
+
+async function fetchJSON(path){ const r=await fetch(SUPABASE_URL+"/rest/v1/"+path,{headers:H});
+  if(!r.ok) throw new Error(r.status+" "+await r.text()); return r.json(); }
+async function insert(table,body,returnRep){
+  const r=await fetch(SUPABASE_URL+"/rest/v1/"+table,{method:"POST",
+    headers:{...HJSON, Prefer: returnRep?"return=representation":"return=minimal"},
+    body:JSON.stringify(body)});
+  if(!r.ok) throw new Error(r.status+" "+await r.text());
+  return returnRep? r.json() : null;
+}
+
+/* ---------- catalog ---------- */
+function renderCats(){
+  const names=["All",...CATS.map(c=>c.name)];
+  document.getElementById("catchips").innerHTML=names.map(n=>
+    `<div class="catchip${n===activeCat?' active':''}" data-cat="${n}">${n}</div>`).join("");
+  document.querySelectorAll(".catchip").forEach(ch=>ch.onclick=()=>{ activeCat=ch.dataset.cat; renderCats(); renderGrid(); });
+}
+function renderGrid(){
+  const q=document.getElementById("search").value.toLowerCase();
+  let list=PRODUCTS.filter(p=>(activeCat==="All"||p.category===activeCat) && p.name.toLowerCase().includes(q));
+  list=list.slice(0,60);
+  document.getElementById("gridState").style.display=list.length?"none":"block";
+  document.getElementById("gridState").textContent="No products match.";
+  document.getElementById("grid").innerHTML=list.map(p=>{
+    const col=CAT_COLORS[p.category]||"#94a3b8";
+    return `<div class="pcard">
+      <div class="pthumb" style="background:${col}">${p.name.replace(/[^A-Za-z]/g,'').slice(0,1)||'S'}</div>
+      <div class="pcat">${p.category}</div>
+      <div class="pname">${p.name}</div>
+      <div class="prate">★ ${(+p.rating).toFixed(1)}</div>
+      <div class="pprice">${inr(p.price)}</div>
+      <button class="addbtn" data-id="${p.id}">Add to cart</button></div>`;
+  }).join("");
+  document.querySelectorAll(".addbtn").forEach(b=>b.onclick=()=>addToCart(+b.dataset.id));
+}
+function addToCart(id){
+  const p=PRODUCTS.find(x=>x.id===id); if(!p) return;
+  if(cart[id]) cart[id].qty++; else cart[id]={product_id:id,name:p.name,price:+p.price,category:p.category,qty:1};
+  saveCart(); updateBadge();
+  const btn=event.target; btn.textContent="Added ✓"; setTimeout(()=>btn.textContent="Add to cart",800);
+}
+
+/* ---------- cart ---------- */
+function renderCart(){
+  const items=Object.values(cart);
+  const box=document.getElementById("cartItems");
+  if(!items.length){ box.innerHTML='<div class="empty">Your cart is empty.</div>';
+    document.getElementById("cartSummary").style.display="none";
+    document.getElementById("toCheckout").style.display="none"; return; }
+  box.innerHTML=items.map(i=>{const col=CAT_COLORS[i.category]||"#94a3b8";
+    return `<div class="citem"><div class="cthumb" style="background:${col}">${i.name.replace(/[^A-Za-z]/g,'').slice(0,1)}</div>
+      <div class="cmid"><div class="n">${i.name}</div><div class="p">${inr(i.price)} each</div></div>
+      <div class="qty"><button data-m="-1" data-id="${i.product_id}">−</button>
+      <span>${i.qty}</span><button data-m="1" data-id="${i.product_id}">+</button></div></div>`;
+  }).join("");
+  document.querySelectorAll(".qty button").forEach(b=>b.onclick=()=>{
+    const id=b.dataset.id, m=+b.dataset.m; if(!cart[id])return;
+    cart[id].qty+=m; if(cart[id].qty<=0) delete cart[id];
+    saveCart(); updateBadge(); renderCart();
+  });
+  document.getElementById("cartSummary").style.display="block";
+  document.getElementById("toCheckout").style.display="block";
+  document.getElementById("sumItems").textContent=cartCount();
+  document.getElementById("sumTotal").textContent=inr(cartTotal());
+}
+
+/* ---------- checkout ---------- */
+function renderCheckout(){
+  document.getElementById("coCity").innerHTML=CITIES.map(c=>`<option value="${c[0]}">${c[0]}</option>`).join("");
+  document.getElementById("coItems").textContent=cartCount();
+  document.getElementById("coTotal").textContent=inr(cartTotal());
+  document.getElementById("coError").innerHTML="";
+  try{ const saved=JSON.parse(localStorage.getItem("shopper")||"{}");
+    if(saved.name) document.getElementById("coName").value=saved.name;
+    if(saved.city) document.getElementById("coCity").value=saved.city;
+  }catch(e){}
+}
+async function placeOrder(){
+  const name=document.getElementById("coName").value.trim();
+  const city=document.getElementById("coCity").value;
+  const pay=document.getElementById("coPay").value;
+  const state=(CITIES.find(c=>c[0]===city)||[])[1]||"";
+  const err=document.getElementById("coError");
+  if(!name){ err.innerHTML='<div class="err">Please enter your name.</div>'; return; }
+  if(!cartCount()){ err.innerHTML='<div class="err">Your cart is empty.</div>'; return; }
+  const btn=document.getElementById("placeBtn"); btn.disabled=true; btn.textContent="Placing…";
+  try{
+    // reuse this shopper's customer id if we created one before (makes them a repeat buyer)
+    let cid=null; try{ cid=JSON.parse(localStorage.getItem("shopper")||"{}").customer_id||null; }catch(e){}
+    if(!cid){
+      const cust=await insert("customers",
+        {name,email:"shopper"+Date.now()+"@example.com",city,state,signup_date:new Date().toISOString(),source:"shop"},true);
+      cid=cust[0].id;
+    }
+    const total=cartTotal();
+    const order=await insert("orders",
+      {customer_id:cid,order_date:new Date().toISOString(),status:"processing",
+       payment_method:pay,city,state,total,source:"shop"},true);
+    const oid=order[0].id;
+    const items=Object.values(cart).map(i=>({order_id:oid,product_id:i.product_id,quantity:i.qty,price:i.price}));
+    await insert("order_items",items,false);
+
+    try{ localStorage.setItem("shopper",JSON.stringify({name,city,customer_id:cid})); }catch(e){}
+    // count store-placed orders so far (source=shop) to show the impact
+    let liveTxt="";
+    try{
+      const r=await fetch(SUPABASE_URL+"/rest/v1/orders?select=id&source=eq.shop",
+        {headers:{...H,Prefer:"count=exact",Range:"0-0"}});
+      const cr=r.headers.get("content-range")||"0/0"; liveTxt=(cr.split("/")[1]||"?");
+    }catch(e){}
+    cart={}; saveCart(); updateBadge();
+    document.getElementById("confOrder").textContent="Order #"+oid;
+    document.getElementById("confAmt").innerHTML="<b>"+inr(total)+"</b> · "+pay+" · "+city;
+    document.getElementById("confLive").textContent = liveTxt? ("Store order #"+liveTxt+" — check the dashboard 🎉") : "";
+    show("confirmView");
+  }catch(e){
+    err.innerHTML='<div class="err"><b>Could not place order.</b><br>'+e.message+'</div>';
+  }finally{ btn.disabled=false; btn.textContent="Place order"; }
+}
+
+/* ---------- wire ---------- */
+document.getElementById("cartBtn").onclick=()=>{ renderCart(); show("cartView"); };
+document.querySelectorAll(".back").forEach(b=>b.onclick=()=>{
+  const to=b.dataset.to; if(to==="cartView") renderCart(); show(to);
+});
+document.getElementById("toCheckout").onclick=()=>{ renderCheckout(); show("checkoutView"); };
+document.getElementById("placeBtn").onclick=placeOrder;
+document.getElementById("shopMore").onclick=()=>show("catalog");
+document.getElementById("search").oninput=renderGrid;
+
+/* ---------- boot ---------- */
+(async()=>{
+  loadCart(); updateBadge();
+  try{
+    const [prods,cats]=await Promise.all([
+      fetchJSON("products?select=id,name,price,rating,stock,category_id&order=rating.desc&limit=1000"),
+      fetchJSON("categories?select=id,name")
+    ]);
+    CATS=cats; const cmap={}; cats.forEach(c=>cmap[c.id]=c.name);
+    PRODUCTS=prods.map(p=>({...p,category:cmap[p.category_id]||"Other"}));
+    renderCats(); renderGrid();
+  }catch(e){
+    document.getElementById("gridState").innerHTML='<div class="err">Couldn\'t load products.<br>'+e.message+'</div>';
+  }
+})();
+</script>
+</body>
+</html>
