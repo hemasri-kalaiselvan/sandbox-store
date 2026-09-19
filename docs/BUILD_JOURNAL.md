@@ -185,6 +185,45 @@ volume is high; controlling the *count per customer* directly is the right model
 
 ---
 
+## Phase 7 — Global filters (the capstone)
+
+A real dashboard has **one filter that drives every chart at once** — change the
+period and revenue, categories, geography, and the funnel all update together.
+That's what makes it a *report*, not a pile of separate charts.
+
+**The catch (and the lesson):** the all-time summary tables (`category_sales`,
+etc.) have already collapsed the date dimension — you can't ask them "categories
+for 2025." To filter by date across sections, the summaries must **keep the date
+dimension**. So we added small **month-grain** tables in `02_summary.sql`:
+- `cat_month` (month × category), `state_month` (month × state),
+  `status_month` (month × status) — a few hundred rows each.
+
+The dashboard fetches these once and **re-aggregates them in the browser** for
+whatever period is selected (All time / Last 12 months / This year / Last year).
+A global chip bar at the top drives Overview, Category, Geographic, and Funnel
+together. Products and Customers stay all-time (they'd each need their own
+date-grained table — a good next extension).
+
+**Lesson:** interactive filtering is enabled by aggregating at *the right grain* —
+one that still contains the dimensions you want to filter and slice by. This is
+the core idea behind a star schema / OLAP cube.
+
+### 7b — Extending the filter to Products & Customers
+- Added `product_month` (month × product) so **top sellers re-rank per period**.
+- Added `cust_acq_month` (new customers per month) so the customer view gains a
+  **period metric: customer acquisition**.
+- **Design lesson:** not every metric should be filtered. *Lifetime value* is
+  lifetime by definition — filtering it to one month is meaningless. So the
+  customer section splits into an **acquisition** block (period-filtered) and a
+  **value** block (lifetime, labelled as such).
+- **Bug fixed along the way:** `product_sales` over-counted revenue because a
+  `LEFT JOIN ... AND status NOT IN (...)` kept cancelled/returned line items in
+  the sum. Fixed with `SUM(...) FILTER (WHERE o.id IS NOT NULL)`. Caught by a
+  sanity check: its total didn't match `category_sales`; now all product/category
+  totals reconcile exactly.
+
+---
+
 ## How to rebuild everything from zero
 
 1. Create a Supabase project (any name; we used `sandbox`).
