@@ -9,7 +9,10 @@ Backend: Supabase (Postgres). Project: **sandbox**.
 |---|------|--------------|--------------|
 | 1 | `01_setup.sql` | Drops old tables, builds the 5 core tables (star schema), indexes, RLS read policies, then seeds ~4 years of realistic data (~140k orders, ~296k items). | Yes — it resets first. |
 | 2 | `02_summary.sql` | Builds the pre-aggregated reporting layer (13 summary tables) the dashboard reads from. | Yes — it drops those first. |
-| 3 | `03_enable_orders.sql` | Adds INSERT policies so the storefront (`shop.html`) can place real orders with the anon key. Run once. | Yes — safe to re-run. |
+| 3 | `03_enable_orders.sql` | Adds INSERT policies + a `source` tag so the storefront (`shop.html`) can place real orders with the anon key. Run once. | Yes — safe to re-run. |
+| 4 | `04_reset_shop_orders.sql` | Revert: deletes only `source='shop'` orders/customers. Run anytime for a clean slate. | Yes. |
+| 5 | `05_schedule_refresh.sql` | Optional: schedules a daily 3:00 AM IST rebuild of the summary tables via `pg_cron`, so new shop orders roll into the historical charts automatically. Enable the `pg_cron` extension first. | Yes — safe to re-run. |
+| 6 | `06_cohort.sql` | Adds the `cohort_retention` table (do customers come back?) and folds it into the refresh function. | Yes — safe to re-run. |
 
 Always run `01` before `02`. Re-running `01` wipes and rebuilds everything, so run `02` again afterwards.
 
