@@ -7,8 +7,9 @@ Backend: Supabase (Postgres). Project: **sandbox**.
 
 | # | File | What it does | Re-runnable? |
 |---|------|--------------|--------------|
-| 1 | `01_setup.sql` | Drops old tables, builds the 5 core tables (star schema), indexes, RLS read policies, then seeds ~4 years of realistic data (150k orders, 315k items). | Yes — it resets first. |
-| 2 | `02_summary.sql` | Builds the pre-aggregated reporting layer the dashboard reads from: `daily_sales`, `category_sales`, `product_sales`, `state_sales`, `customer_stats`. | Yes — it drops those first. |
+| 1 | `01_setup.sql` | Drops old tables, builds the 5 core tables (star schema), indexes, RLS read policies, then seeds ~4 years of realistic data (~140k orders, ~296k items). | Yes — it resets first. |
+| 2 | `02_summary.sql` | Builds the pre-aggregated reporting layer (13 summary tables) the dashboard reads from. | Yes — it drops those first. |
+| 3 | `03_enable_orders.sql` | Adds INSERT policies so the storefront (`shop.html`) can place real orders with the anon key. Run once. | Yes — safe to re-run. |
 
 Always run `01` before `02`. Re-running `01` wipes and rebuilds everything, so run `02` again afterwards.
 
