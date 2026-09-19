@@ -173,9 +173,9 @@
         </div>
       </div>
 
-      <div class="section-title" id="sec-products">Best-selling products <span class="tag-static">all time</span></div>
+      <div class="section-title" id="sec-products">Best-selling products · <span id="prodPeriod">all time</span></div>
       <div class="card">
-        <div class="head"><h3>Top products by revenue</h3><span class="hint">of 200</span></div>
+        <div class="head"><h3>Top products by revenue</h3><span class="hint" id="prodHint">top 8 of 200</span></div>
         <div id="prodState" class="state"><div class="spinner"></div>Loading…</div>
         <div class="plist" id="prodList"></div>
       </div>
@@ -215,7 +215,20 @@
 
     <!-- CUSTOMERS -->
     <section id="sec-customers">
-      <div class="section-title">Customer analytics <span class="tag-static">all time</span></div>
+      <!-- acquisition: a PERIOD metric (responds to the global filter) -->
+      <div class="section-title">Customer acquisition · <span id="acqPeriod">all time</span></div>
+      <div class="tiles" id="acqTiles">
+        <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">New customers</div></div>
+        <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">Monthly avg</div></div>
+        <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">Peak month</div></div>
+      </div>
+      <div class="card">
+        <div class="head"><h3>New customers over time</h3><span class="hint" id="acqHint"></span></div>
+        <div class="chart-wrap"><canvas id="acqChart"></canvas></div>
+      </div>
+
+      <!-- value: LIFETIME metrics (not period-filtered, by definition) -->
+      <div class="section-title">Customer value <span class="tag-static">lifetime</span></div>
       <div class="tiles" id="custTiles">
         <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">Paying customers</div></div>
         <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">Repeat rate</div></div>
@@ -296,7 +309,7 @@ function labelMonth(ym){ const [y,m]=ym.split("-");
   return new Date(y,m-1).toLocaleString("en-US",{month:"short"})+" "+y.slice(2); }
 
 /* ---------- global state + caches ---------- */
-let DAILY=[], CATM=[], STM=[], STATM=[];   // daily_sales, cat_month, state_month, status_month
+let DAILY=[], CATM=[], STM=[], STATM=[], PRODM=[], CACQ=[];   // month-grain caches
 let ANCHOR_YM="", FIRST_YM="";
 let PERIOD="all";
 const CH={};   // chart instances (destroy before redraw)
@@ -438,25 +451,55 @@ function renderFunnel(b){
         tooltip:{callbacks:{label:c=>c.label+": "+num(c.parsed)+" ("+pctOf(c.parsed).toFixed(1)+"%)"}}}}});
 }
 
-/* apply the global period to every date-aware section */
-function applyPeriod(p){
-  PERIOD=p; const b=periodBounds(p);
-  ["ovPeriod","catPeriod","geoPeriod","funPeriod"].forEach(id=>document.getElementById(id).textContent=PLABEL[p]);
-  renderOverview(b); renderCategory(b); renderGeo(b); renderFunnel(b);
-}
-
-/* ---------- static sections (all-time; not date-filtered) ---------- */
-async function loadProducts(){
-  const rows=await fetchOne("product_sales?select=product,category,units_sold,revenue&order=revenue.desc&limit=8");
+/* PRODUCTS — period-filtered top sellers (re-ranked per period) */
+function renderProducts(b){
+  const rev=aggBy(PRODM,b.cur[0],b.cur[1],"product","revenue");
+  const rows=[...rev.entries()].map(([product,revenue])=>({product,revenue}))
+    .sort((a,z)=>z.revenue-a.revenue).slice(0,8);
+  const max=rows.length?rows[0].revenue:1;
   document.getElementById("prodState").style.display="none";
-  const max=Math.max(...rows.map(r=>+r.revenue),1);
-  document.getElementById("prodList").innerHTML=rows.map((r,i)=>{const w=Math.round(+r.revenue/max*100);
+  document.getElementById("prodHint").textContent="top 8 of 200";
+  document.getElementById("prodList").innerHTML=rows.map((r,i)=>{const w=Math.round(r.revenue/max*100);
     return `<div class="prow"><div class="prank">${i+1}</div>
       <div class="pmain"><div class="pname">${r.product}</div>
       <div class="pbar-bg"><div class="pbar" style="width:${w}%"></div></div></div>
-      <div class="pmeta"><div class="pval">${money(r.revenue)}</div><div class="ptag">${num(r.units_sold)} units</div></div></div>`;
+      <div class="pmeta"><div class="pval">${money(r.revenue)}</div></div></div>`;
   }).join("");
 }
+
+/* CUSTOMER ACQUISITION — a PERIOD metric (new customers gained in the window) */
+function renderAcquisition(b){
+  const rows=CACQ.filter(r=>{const ym=r.month.slice(0,7); return ym>=b.cur[0]&&ym<=b.cur[1];})
+    .map(r=>({ym:r.month.slice(0,7),n:+r.new_customers||0})).sort((a,z)=>a.ym<z.ym?-1:1);
+  const total=rows.reduce((s,r)=>s+r.n,0);
+  const avg=rows.length?Math.round(total/rows.length):0;
+  const peak=rows.reduce((mx,r)=>r.n>mx.n?r:mx,{n:-1,ym:""});
+  const tv=document.querySelectorAll("#acqTiles .tile .tv");
+  tv[0].textContent=num(total);
+  tv[1].textContent=num(avg);
+  tv[2].textContent=peak.ym?labelMonth(peak.ym):"—"; tv[2].style.fontSize="14px";
+  tv.forEach(t=>t.classList.remove("skeleton"));
+  document.getElementById("acqHint").textContent=rows.length+" months";
+  if(CH.acq) CH.acq.destroy();
+  CH.acq=new Chart(document.getElementById("acqChart").getContext("2d"),{type:"bar",
+    data:{labels:rows.map(r=>labelMonth(r.ym)),datasets:[{data:rows.map(r=>r.n),
+      backgroundColor:"#16a34a",borderRadius:4}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>num(c.parsed.y)+" new"}}},
+      scales:{x:{grid:{display:false},ticks:{color:"#9aa0ac",font:{size:10},maxTicksLimit:7}},
+        y:{grid:{color:"#eef0f4"},ticks:{color:"#9aa0ac",font:{size:10}},beginAtZero:true}}}});
+}
+
+/* apply the global period to every date-aware section */
+function applyPeriod(p){
+  PERIOD=p; const b=periodBounds(p);
+  ["ovPeriod","catPeriod","geoPeriod","funPeriod","prodPeriod","acqPeriod"]
+    .forEach(id=>document.getElementById(id).textContent=PLABEL[p]);
+  renderOverview(b); renderCategory(b); renderGeo(b); renderFunnel(b);
+  renderProducts(b); renderAcquisition(b);
+}
+
+/* ---------- LIFETIME customer value (not period-filtered, by definition) ---------- */
 async function loadCustomers(){
   const [never,oneTime,repeat,top]=await Promise.all([
     countTable("customer_stats","orders=eq.0"),countTable("customer_stats","orders=eq.1"),
@@ -504,19 +547,21 @@ document.querySelectorAll("#globalChips .chip").forEach(chip=>{
 /* ---------- boot ---------- */
 (async()=>{
   try{
-    const [daily,catm,stm,statm,customers]=await Promise.all([
+    const [daily,catm,stm,statm,prodm,cacq,customers]=await Promise.all([
       fetchAll("daily_sales?select=day,orders,valid_orders,revenue&order=day.asc"),
       fetchAll("cat_month?select=month,category,revenue&order=month.asc"),
       fetchAll("state_month?select=month,state,orders,revenue&order=month.asc"),
       fetchAll("status_month?select=month,status,orders&order=month.asc"),
+      fetchAll("product_month?select=month,product,revenue&order=month.asc"),
+      fetchAll("cust_acq_month?select=month,new_customers&order=month.asc"),
       countTable("customer_stats")
     ]);
-    DAILY=daily; CATM=catm; STM=stm; STATM=statm;
+    DAILY=daily; CATM=catm; STM=stm; STATM=statm; PRODM=prodm; CACQ=cacq;
     FIRST_YM=daily[0].day.slice(0,7); ANCHOR_YM=daily[daily.length-1].day.slice(0,7);
     document.getElementById("kCusV").textContent=num(customers);
     document.getElementById("kCusV").classList.remove("skeleton");
-    applyPeriod("all");                 // initial global view
-    await Promise.all([ loadProducts(), loadCustomers() ]);
+    applyPeriod("all");                 // initial global view (drives products + acquisition too)
+    await loadCustomers();              // lifetime value block
   }catch(e){ showError(e.message||e); }
 })();
 </script>
