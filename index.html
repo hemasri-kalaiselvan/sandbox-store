@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Sandbox Analytics</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#f3f4f8; --surface:#ffffff; --surface-2:#f6f7fb; --line:#e7e9f0;
+    --text:#171a24; --muted:#6b7280; --faint:#9aa0ac;
+    --accent:#6366f1; --accent-soft:#eef0fe;
+    --radius:18px;
+    --shadow:0 1px 3px rgba(20,22,40,.05), 0 8px 24px rgba(20,22,40,.05);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{background:var(--bg);color:var(--text);display:flex;justify-content:center;}
+  .app{width:100%;max-width:440px;min-height:100vh;background:var(--bg);
+       position:relative;padding-bottom:90px;overflow-x:hidden;}
+
+  /* app bar */
+  .appbar{position:sticky;top:0;z-index:20;background:#fff;
+    padding:20px 20px 16px;border-bottom:1px solid var(--line);}
+  .appbar .row{display:flex;align-items:center;justify-content:space-between;}
+  .brand{display:flex;align-items:center;gap:11px;}
+  .logo{width:38px;height:38px;border-radius:11px;
+    background:linear-gradient(135deg,#6366f1,#8b5cf6);
+    display:grid;place-items:center;font-weight:800;font-size:18px;color:#fff;}
+  .brand h1{font-size:17px;font-weight:700;}
+  .brand p{font-size:12px;color:var(--muted);margin-top:1px;}
+  .live{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);
+    background:var(--surface-2);padding:6px 10px;border-radius:20px;border:1px solid var(--line);}
+  .dot{width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.15);}
+
+  .content{padding:16px 16px 8px;}
+  .section-title{font-size:12.5px;color:var(--faint);font-weight:700;
+    text-transform:uppercase;letter-spacing:.6px;margin:24px 4px 12px;}
+  .section-title:first-child{margin-top:8px;}
+
+  /* KPI grid */
+  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 15px;box-shadow:var(--shadow);}
+  .kpi .icn{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+    font-size:16px;margin-bottom:12px;font-weight:700;}
+  .kpi .label{font-size:12px;color:var(--muted);font-weight:500;}
+  .kpi .value{font-size:22px;font-weight:800;margin-top:3px;letter-spacing:-.5px;
+    font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .kpi .sub{font-size:11px;color:var(--faint);margin-top:5px;}
+  .i-rev{background:#eef0fe;color:#6366f1;}
+  .i-ord{background:#e0f7fa;color:#0891b2;}
+  .i-aov{background:#fef3c7;color:#d97706;}
+  .i-cus{background:#dcfce7;color:#16a34a;}
+
+  /* card */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 14px 14px;box-shadow:var(--shadow);margin-bottom:14px;}
+  .card .head{display:flex;align-items:center;justify-content:space-between;margin:0 4px 14px;}
+  .card .head h3{font-size:15px;font-weight:700;}
+  .card .head .hint{font-size:11px;color:var(--faint);}
+  .chart-wrap{position:relative;height:230px;}
+  .chart-wrap.tall{height:280px;}
+
+  /* ranked product list */
+  .plist{display:flex;flex-direction:column;gap:2px;}
+  .prow{display:flex;align-items:center;gap:11px;padding:9px 6px;border-radius:10px;}
+  .prow:nth-child(odd){background:var(--surface-2);}
+  .prank{font-size:12px;font-weight:800;color:var(--faint);width:18px;text-align:center;flex:none;}
+  .pmain{flex:1;min-width:0;}
+  .pname{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pbar-bg{height:5px;background:var(--line);border-radius:3px;margin-top:5px;overflow:hidden;}
+  .pbar{height:100%;border-radius:3px;background:linear-gradient(90deg,#6366f1,#8b5cf6);}
+  .pmeta{text-align:right;flex:none;}
+  .pval{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums;}
+  .ptag{font-size:10.5px;color:var(--faint);margin-top:2px;}
+
+  /* states */
+  .state{padding:36px 20px;text-align:center;color:var(--faint);font-size:14px;}
+  .spinner{width:32px;height:32px;border:3px solid var(--line);border-top-color:var(--accent);
+    border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .err{background:#fff1f2;border:1px solid #fecdd3;color:#be123c;
+    border-radius:14px;padding:14px;font-size:13px;margin:8px 4px;line-height:1.5;}
+  .skeleton{background:linear-gradient(90deg,#eef0f4 25%,#e3e6ee 50%,#eef0f4 75%);
+    background-size:200% 100%;animation:sh 1.3s infinite;border-radius:6px;}
+  @keyframes sh{to{background-position:-200% 0}}
+
+  /* bottom nav */
+  .nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);
+    width:100%;max-width:440px;background:rgba(255,255,255,.94);backdrop-filter:blur(12px);
+    border-top:1px solid var(--line);display:flex;justify-content:space-around;
+    padding:9px 8px calc(9px + env(safe-area-inset-bottom));z-index:30;}
+  .nav a{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+    font-size:10.5px;color:var(--muted);text-decoration:none;padding:4px 12px;font-weight:600;}
+  .nav a .ic{font-size:18px;line-height:1;}
+  .nav a.active{color:var(--accent);}
+
+  /* date-range filter chips */
+  .chips{display:flex;gap:8px;overflow-x:auto;padding:2px 4px 6px;margin-bottom:2px;
+    -ms-overflow-style:none;scrollbar-width:none;}
+  .chips::-webkit-scrollbar{display:none;}
+  .chip{flex:none;font-size:12.5px;font-weight:600;color:var(--muted);
+    background:var(--surface);border:1px solid var(--line);border-radius:20px;
+    padding:7px 14px;cursor:pointer;transition:all .15s;}
+  .chip.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  /* growth delta badge inside KPI sub line */
+  .delta{font-weight:700;}
+  .delta.up{color:#16a34a;} .delta.down{color:#dc2626;} .delta.flat{color:var(--faint);}
+
+  /* stat tiles (3-up) */
+  .tiles{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px;}
+  .tile{background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:13px 8px;text-align:center;box-shadow:var(--shadow);}
+  .tile .tv{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;}
+  .tile .tl{font-size:10.5px;color:var(--muted);margin-top:4px;line-height:1.3;}
+
+  /* fulfillment funnel */
+  .funnel{display:flex;flex-direction:column;gap:11px;}
+  .fstage .ftop{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px;}
+  .fstage .fname{font-weight:600;} .fstage .fpct{color:var(--muted);font-variant-numeric:tabular-nums;}
+  .fbar-bg{height:26px;background:var(--surface-2);border-radius:8px;overflow:hidden;}
+  .fbar{height:100%;border-radius:8px;display:flex;align-items:center;justify-content:flex-end;
+    padding-right:9px;color:#fff;font-size:11.5px;font-weight:700;min-width:34px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="appbar">
+    <div class="row">
+      <div class="brand">
+        <div class="logo">S</div>
+        <div><h1>Sandbox Store</h1><p>Analytics dashboard</p></div>
+      </div>
+      <div class="live"><span class="dot"></span> Live</div>
+    </div>
+  </header>
+
+  <main class="content">
+    <div id="error"></div>
+
+    <!-- ===== OVERVIEW ===== -->
+    <section id="sec-overview">
+      <div class="section-title">Overview</div>
+      <div class="chips" id="rangeChips">
+        <div class="chip" data-range="30d">30 days</div>
+        <div class="chip" data-range="90d">90 days</div>
+        <div class="chip" data-range="12m">12 months</div>
+        <div class="chip" data-range="ytd">This year</div>
+        <div class="chip active" data-range="all">All time</div>
+      </div>
+      <div class="kpis" id="kpis">
+        <div class="kpi"><div class="icn i-rev">₹</div><div class="label">Revenue</div><div class="value skeleton" id="kRevV" style="height:22px;width:80%">&nbsp;</div><div class="sub" id="kRevS">realized sales</div></div>
+        <div class="kpi"><div class="icn i-ord">🛒</div><div class="label">Orders</div><div class="value skeleton" id="kOrdV" style="height:22px;width:70%">&nbsp;</div><div class="sub" id="kOrdS">placed</div></div>
+        <div class="kpi"><div class="icn i-aov">📊</div><div class="label">Avg order value</div><div class="value skeleton" id="kAovV" style="height:22px;width:75%">&nbsp;</div><div class="sub" id="kAovS">per order</div></div>
+        <div class="kpi"><div class="icn i-cus">👥</div><div class="label">Customers</div><div class="value skeleton" id="kCusV" style="height:22px;width:65%">&nbsp;</div><div class="sub">registered</div></div>
+      </div>
+
+      <div class="section-title">Revenue trend</div>
+      <div class="card">
+        <div class="head"><h3>Revenue over time</h3><span class="hint" id="trendHint">loading…</span></div>
+        <div class="chart-wrap">
+          <div id="trendState" class="state"><div class="spinner"></div>Loading…</div>
+          <canvas id="trendChart" style="display:none"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== CATEGORY & PRODUCT ===== -->
+    <section id="sec-category">
+      <div class="section-title">Revenue by category</div>
+      <div class="card">
+        <div class="head"><h3>Which categories sell</h3><span class="hint" id="catHint">loading…</span></div>
+        <div class="chart-wrap tall">
+          <div id="catState" class="state"><div class="spinner"></div>Loading…</div>
+          <canvas id="catChart" style="display:none"></canvas>
+        </div>
+      </div>
+
+      <div class="section-title" id="sec-products">Best-selling products · top 8</div>
+      <div class="card">
+        <div class="head"><h3>Top products by revenue</h3><span class="hint">of 200</span></div>
+        <div id="prodState" class="state"><div class="spinner"></div>Loading…</div>
+        <div class="plist" id="prodList"></div>
+      </div>
+
+      <!-- geographic -->
+      <div class="section-title" id="sec-geo">Revenue by state</div>
+      <div class="tiles" id="geoTiles">
+        <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">States</div></div>
+        <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">Top state</div></div>
+        <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">Top share</div></div>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Where revenue comes from</h3><span class="hint" id="geoHint">loading…</span></div>
+        <div class="chart-wrap" style="height:420px">
+          <div id="geoState" class="state"><div class="spinner"></div>Loading…</div>
+          <canvas id="geoChart" style="display:none"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== ORDERS / FUNNEL ===== -->
+    <section id="sec-orders">
+      <div class="section-title">Order outcomes · all time</div>
+      <div class="tiles" id="statTiles">
+        <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">Delivery rate</div></div>
+        <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">Cancellation</div></div>
+        <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">Return rate</div></div>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Fulfillment funnel</h3><span class="hint">of all orders</span></div>
+        <div class="funnel" id="funnel"><div class="state"><div class="spinner"></div>Loading…</div></div>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Status breakdown</h3><span class="hint" id="statusHint">150k orders</span></div>
+        <div class="chart-wrap"><canvas id="statusChart"></canvas></div>
+      </div>
+    </section>
+
+    <!-- ===== CUSTOMERS ===== -->
+    <section id="sec-customers">
+      <div class="section-title">Customer analytics · all time</div>
+      <div class="tiles" id="custTiles">
+        <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">Paying customers</div></div>
+        <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">Repeat rate</div></div>
+        <div class="tile"><div class="tv skeleton" style="height:19px">&nbsp;</div><div class="tl">Avg lifetime value</div></div>
+      </div>
+      <div class="card">
+        <div class="head"><h3>New vs returning</h3><span class="hint" id="custHint">loading…</span></div>
+        <div class="chart-wrap"><canvas id="custChart"></canvas></div>
+      </div>
+      <div class="section-title">Top customers · by lifetime value</div>
+      <div class="card">
+        <div class="head"><h3>Most valuable customers</h3><span class="hint">top 8</span></div>
+        <div id="topCustState" class="state"><div class="spinner"></div>Loading…</div>
+        <div class="plist" id="topCustList"></div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="nav">
+    <a class="active" data-go="sec-overview"><span class="ic">📈</span>Overview</a>
+    <a data-go="sec-category"><span class="ic">🛍️</span>Sales</a>
+    <a data-go="sec-orders"><span class="ic">🧾</span>Orders</a>
+    <a data-go="sec-customers"><span class="ic">👤</span>Customers</a>
+  </nav>
+</div>
+
+<script>
+/* ============================================================
+   CONFIG — your Supabase project (anon key: public & read-only)
+   ============================================================ */
+const SUPABASE_URL = "https://vzpzvjxendcacvfstcge.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6cHp2anhlbmRjYWN2ZnN0Y2dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3NzkwNzEsImV4cCI6MjEwNTM1NTA3MX0.8K9quNMoXc9N4PmIuTERoLHpkMSf9qaFJBkI8nybjzA";
+const HEADERS = { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY };
+
+/* category color map (distinct hues, not a rainbow-by-order) */
+const CAT_COLORS = {
+  "Electronics":"#6366f1","Fashion":"#ec4899","Home & Kitchen":"#14b8a6",
+  "Beauty & Personal Care":"#f59e0b","Sports & Fitness":"#3b82f6","Books":"#8b5cf6",
+  "Grocery":"#10b981","Toys & Baby":"#f43f5e"
+};
+
+async function fetchAll(path){
+  let rows=[], from=0, page=1000;
+  while(true){
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`,
+      {headers:{...HEADERS, Range:`${from}-${from+page-1}`}});
+    if(!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    const batch = await res.json();
+    rows = rows.concat(batch);
+    if(batch.length < page) break;
+    from += page;
+  }
+  return rows;
+}
+async function fetchOne(path){
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`,{headers:HEADERS});
+  if(!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  return res.json();
+}
+async function countRows(table){
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`,
+    {headers:{...HEADERS, Prefer:"count=exact", Range:"0-0"}});
+  const cr = res.headers.get("content-range")||"0/0";
+  return parseInt(cr.split("/")[1]||"0",10);
+}
+function money(n){ n=Number(n)||0;
+  if(n>=1e7) return "₹"+(n/1e7).toFixed(1)+" Cr";
+  if(n>=1e5) return "₹"+(n/1e5).toFixed(1)+" L";
+  return "₹"+Math.round(n).toLocaleString("en-IN"); }
+function inr(n){ return "₹"+Math.round(Number(n)||0).toLocaleString("en-IN"); }
+function num(n){ return (Number(n)||0).toLocaleString("en-IN"); }
+function showError(m){
+  document.getElementById("error").innerHTML =
+   `<div class="err"><b>Couldn't load data.</b><br>${m}</div>`;
+}
+
+/* ---------- OVERVIEW (with date-range filter + period comparison) ---------- */
+let DAILY=[];            // all daily rows, cached after one fetch
+let ANCHOR=null;         // latest date in the data (acts as "today")
+let trendChart=null;
+
+const addDays=(d,n)=>{ const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+const iso=d=> d.toISOString().slice(0,10);
+
+// sum revenue / orders / valid orders over rows whose day is in [start,end] (inclusive, ISO strings)
+function sumWindow(startISO, endISO){
+  let rev=0, ord=0, val=0;
+  for(const d of DAILY){
+    if(d.day>=startISO && d.day<=endISO){
+      rev+=+d.revenue||0; ord+=+d.orders||0; val+=+d.valid_orders||0;
+    }
+  }
+  return {rev,ord,val};
+}
+function pct(cur,prev){ return prev>0 ? (cur-prev)/prev*100 : null; }
+function deltaHtml(p){
+  if(p===null) return `<span class="delta flat">—</span>`;
+  const up=p>=0, cls=Math.abs(p)<0.05?"flat":(up?"up":"down");
+  const arrow=cls==="flat"?"→":(up?"▲":"▼");
+  return `<span class="delta ${cls}">${arrow} ${Math.abs(p).toFixed(1)}%</span> vs prev`;
+}
+
+// figure out current + previous window bounds for a given range key
+function windowsFor(range){
+  const end=ANCHOR;
+  if(range==="all"){
+    const start=DAILY[0].day;
+    return {curStart:start, curEnd:iso(end), prevStart:null, prevEnd:null};
+  }
+  if(range==="ytd"){
+    const y=end.getFullYear();
+    const curStart=new Date(y,0,1);
+    const prevStart=new Date(y-1,0,1);
+    const prevEnd=new Date(end); prevEnd.setFullYear(y-1);
+    return {curStart:iso(curStart), curEnd:iso(end),
+            prevStart:iso(prevStart), prevEnd:iso(prevEnd)};
+  }
+  const days = range==="30d"?30 : range==="90d"?90 : 365;
+  const curStart=addDays(end,-(days-1));
+  const prevEnd=addDays(curStart,-1);
+  const prevStart=addDays(prevEnd,-(days-1));
+  return {curStart:iso(curStart), curEnd:iso(end),
+          prevStart:iso(prevStart), prevEnd:iso(prevEnd)};
+}
+
+// build chart series (labels+data in ₹Cr) from a window, at day or month granularity
+function seriesFor(startISO, endISO, granularity){
+  const rows=DAILY.filter(d=>d.day>=startISO && d.day<=endISO);
+  if(granularity==="day"){
+    const labels=rows.map(d=>{
+      const dt=new Date(d.day);
+      return dt.toLocaleString("en-US",{day:"numeric",month:"short"});
+    });
+    return {labels, data:rows.map(d=>(+d.revenue||0)/1e7)};
+  }
+  const byM=new Map();
+  for(const d of rows){ const m=d.day.slice(0,7);
+    byM.set(m,(byM.get(m)||0)+(+d.revenue||0)); }
+  const months=[...byM.keys()].sort();
+  const labels=months.map(m=>{const[y,mo]=m.split("-");
+    return new Date(y,mo-1).toLocaleString("en-US",{month:"short"})+" "+y.slice(2);});
+  return {labels, data:months.map(m=>byM.get(m)/1e7)};
+}
+
+function renderRange(range){
+  const w=windowsFor(range);
+  const cur=sumWindow(w.curStart,w.curEnd);
+  const prev=w.prevStart? sumWindow(w.prevStart,w.prevEnd) : null;
+  const aov=cur.val? cur.rev/cur.val : 0;
+  const prevAov=prev&&prev.val? prev.rev/prev.val : 0;
+
+  // KPI values
+  document.getElementById("kRevV").textContent=money(cur.rev);
+  document.getElementById("kOrdV").textContent=num(cur.ord);
+  document.getElementById("kAovV").textContent=inr(aov);
+  ["kRevV","kOrdV","kAovV"].forEach(id=>document.getElementById(id).classList.remove("skeleton"));
+
+  // KPI sub-lines: growth vs previous period (or default text for "all time")
+  if(range==="all"){
+    document.getElementById("kRevS").textContent="realized sales";
+    document.getElementById("kOrdS").textContent="placed";
+    document.getElementById("kAovS").textContent="per order";
+  }else{
+    document.getElementById("kRevS").innerHTML=deltaHtml(pct(cur.rev,prev.rev));
+    document.getElementById("kOrdS").innerHTML=deltaHtml(pct(cur.ord,prev.ord));
+    document.getElementById("kAovS").innerHTML=deltaHtml(pct(aov,prevAov));
+  }
+
+  // trend chart — daily for short windows, monthly otherwise
+  const gran=(range==="30d"||range==="90d")?"day":"month";
+  const s=seriesFor(w.curStart,w.curEnd,gran);
+  document.getElementById("trendHint").textContent=
+    s.labels.length+(gran==="day"?" days":" months");
+
+  const cv=document.getElementById("trendChart");
+  const ctx=cv.getContext("2d");
+  const g=ctx.createLinearGradient(0,0,0,230);
+  g.addColorStop(0,"rgba(99,102,241,.28)"); g.addColorStop(1,"rgba(99,102,241,0)");
+  if(trendChart) trendChart.destroy();
+  trendChart=new Chart(ctx,{type:"line",
+    data:{labels:s.labels,datasets:[{data:s.data,borderColor:"#6366f1",borderWidth:2,
+      tension:.35,fill:true,backgroundColor:g,pointRadius:0,pointHoverRadius:5}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>"₹"+c.parsed.y.toFixed(2)+" Cr"}}},
+      scales:{x:{grid:{display:false},ticks:{color:"#9aa0ac",font:{size:10},maxTicksLimit:7}},
+        y:{grid:{color:"#eef0f4"},ticks:{color:"#9aa0ac",font:{size:10},callback:v=>"₹"+v+"Cr"},beginAtZero:true}}}});
+}
+
+async function loadOverview(){
+  const [daily, customers] = await Promise.all([
+    fetchAll("daily_sales?select=day,orders,valid_orders,revenue&order=day.asc"),
+    countRows("customer_stats")
+  ]);
+  DAILY=daily;
+  ANCHOR=new Date(daily[daily.length-1].day);
+  document.getElementById("kCusV").textContent=num(customers);
+  document.getElementById("kCusV").classList.remove("skeleton");
+  document.getElementById("trendState").style.display="none";
+  document.getElementById("trendChart").style.display="block";
+
+  // wire the range chips
+  document.querySelectorAll("#rangeChips .chip").forEach(chip=>{
+    chip.addEventListener("click",()=>{
+      document.querySelectorAll("#rangeChips .chip").forEach(c=>c.classList.remove("active"));
+      chip.classList.add("active");
+      renderRange(chip.dataset.range);
+    });
+  });
+  renderRange("all");   // initial view
+}
+
+/* ---------- CATEGORY (dimensional slicing + ranking) ---------- */
+async function loadCategory(){
+  const cats = await fetchOne("category_sales?select=category,revenue,profit,units&order=revenue.desc");
+  document.getElementById("catState").style.display="none";
+  document.getElementById("catHint").textContent=cats.length+" categories";
+  const cv=document.getElementById("catChart"); cv.style.display="block";
+  const labels=cats.map(c=>c.category);
+  const data=cats.map(c=>(+c.revenue)/1e7);
+  const colors=cats.map(c=>CAT_COLORS[c.category]||"#94a3b8");
+  new Chart(cv.getContext("2d"),{type:"bar",
+    data:{labels,datasets:[{data,backgroundColor:colors,borderRadius:6,barThickness:18}]},
+    options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>"₹"+c.parsed.x.toFixed(1)+" Cr"}}},
+      scales:{x:{grid:{color:"#eef0f4"},ticks:{color:"#9aa0ac",font:{size:10},callback:v=>"₹"+v+"Cr"},beginAtZero:true},
+        y:{grid:{display:false},ticks:{color:"#171a24",font:{size:11}}}}}});
+}
+
+/* ---------- PRODUCTS (ranking) ---------- */
+async function loadProducts(){
+  const rows = await fetchOne("product_sales?select=product,category,units_sold,revenue&order=revenue.desc&limit=8");
+  document.getElementById("prodState").style.display="none";
+  const max = Math.max(...rows.map(r=>+r.revenue), 1);
+  const list=document.getElementById("prodList");
+  list.innerHTML = rows.map((r,i)=>{
+    const w=Math.round((+r.revenue/max)*100);
+    return `<div class="prow">
+      <div class="prank">${i+1}</div>
+      <div class="pmain">
+        <div class="pname">${r.product}</div>
+        <div class="pbar-bg"><div class="pbar" style="width:${w}%"></div></div>
+      </div>
+      <div class="pmeta"><div class="pval">${money(r.revenue)}</div>
+        <div class="ptag">${num(r.units_sold)} units</div></div>
+    </div>`;
+  }).join("");
+}
+
+/* ---------- CUSTOMERS (segmentation + CLV) ---------- */
+// generic count-only request for any table
+async function countTable(table, query=""){
+  const url=`${SUPABASE_URL}/rest/v1/${table}?select=*${query?"&"+query:""}`;
+  const res=await fetch(url,{headers:{...HEADERS, Prefer:"count=exact", Range:"0-0"}});
+  return parseInt((res.headers.get("content-range")||"0/0").split("/")[1]||"0",10);
+}
+async function loadCustomers(){
+  const [never,oneTime,repeat,top] = await Promise.all([
+    countTable("customer_stats","orders=eq.0"),
+    countTable("customer_stats","orders=eq.1"),
+    countTable("customer_stats","orders=gte.2"),
+    fetchOne("customer_stats?select=name,city,orders,lifetime_value&order=lifetime_value.desc&limit=8")
+  ]);
+  const paying=oneTime+repeat;
+  const totalRev=DAILY.reduce((s,d)=>s+(+d.revenue||0),0);
+  const avgCLV = paying? totalRev/paying : 0;
+  const repeatRate = paying? repeat/paying*100 : 0;
+
+  const tv=document.querySelectorAll("#custTiles .tile .tv");
+  tv[0].textContent=num(paying);
+  tv[1].textContent=repeatRate.toFixed(1)+"%";
+  tv[2].textContent=money(avgCLV);
+  tv.forEach(t=>t.classList.remove("skeleton"));
+
+  document.getElementById("custHint").textContent=num(never+paying)+" registered";
+  new Chart(document.getElementById("custChart").getContext("2d"),{type:"doughnut",
+    data:{labels:["Repeat buyers","One-time","Never purchased"],
+      datasets:[{data:[repeat,oneTime,never],
+        backgroundColor:["#16a34a","#6366f1","#cbd5e1"],borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:"60%",
+      plugins:{legend:{position:"right",labels:{font:{size:11},color:"#171a24",boxWidth:11,padding:9}},
+        tooltip:{callbacks:{label:c=>c.label+": "+num(c.parsed)}}}}});
+
+  const max=Math.max(...top.map(r=>+r.lifetime_value),1);
+  document.getElementById("topCustState").style.display="none";
+  document.getElementById("topCustList").innerHTML=top.map((r,i)=>{
+    const w=Math.round(+r.lifetime_value/max*100);
+    return `<div class="prow"><div class="prank">${i+1}</div>
+      <div class="pmain"><div class="pname">${r.name} · ${r.city}</div>
+        <div class="pbar-bg"><div class="pbar" style="width:${w}%"></div></div></div>
+      <div class="pmeta"><div class="pval">${money(r.lifetime_value)}</div>
+        <div class="ptag">${num(r.orders)} orders</div></div></div>`;
+  }).join("");
+}
+
+/* ---------- GEOGRAPHIC (spatial slicing) ---------- */
+async function loadGeo(){
+  const rows = await fetchOne("state_sales?select=state,revenue,orders,customers&order=revenue.desc");
+  const total = rows.reduce((s,r)=>s+(+r.revenue||0),0);
+  // tiles
+  const tv=document.querySelectorAll("#geoTiles .tile .tv");
+  tv[0].textContent=rows.length;
+  tv[1].textContent=rows[0].state;
+  tv[1].style.fontSize="14px";
+  tv[2].textContent=(total?(+rows[0].revenue/total*100):0).toFixed(0)+"%";
+  tv.forEach(t=>t.classList.remove("skeleton"));
+
+  document.getElementById("geoState").style.display="none";
+  document.getElementById("geoHint").textContent=rows.length+" states";
+  const cv=document.getElementById("geoChart"); cv.style.display="block";
+  new Chart(cv.getContext("2d"),{type:"bar",
+    data:{labels:rows.map(r=>r.state),
+      datasets:[{data:rows.map(r=>(+r.revenue)/1e7),backgroundColor:"#6366f1",
+        borderRadius:6,barThickness:16}]},
+    options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{
+        label:c=>"₹"+c.parsed.x.toFixed(1)+" Cr",
+        afterLabel:c=>{const r=rows[c.dataIndex];
+          return num(r.orders)+" orders · "+num(r.customers)+" customers";}}}},
+      scales:{x:{grid:{color:"#eef0f4"},ticks:{color:"#9aa0ac",font:{size:10},callback:v=>"₹"+v+"Cr"},beginAtZero:true},
+        y:{grid:{display:false},ticks:{color:"#171a24",font:{size:10.5}}}}}});
+}
+
+/* ---------- ORDERS / FUNNEL (funnel analysis + rates) ---------- */
+// count-only request: returns just the total, downloads no rows
+async function countWhere(query){
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?select=*&${query}`,
+    {headers:{...HEADERS, Prefer:"count=exact", Range:"0-0"}});
+  return parseInt((res.headers.get("content-range")||"0/0").split("/")[1]||"0",10);
+}
+async function loadFunnel(){
+  const [delivered,shipped,processing,cancelled,returned] = await Promise.all([
+    countWhere("status=eq.delivered"), countWhere("status=eq.shipped"),
+    countWhere("status=eq.processing"), countWhere("status=eq.cancelled"),
+    countWhere("status=eq.returned")
+  ]);
+  const total = delivered+shipped+processing+cancelled+returned;
+  const pctOf = n => total ? n/total*100 : 0;
+
+  // stat tiles
+  const tv=document.querySelectorAll("#statTiles .tile .tv");
+  tv[0].textContent=pctOf(delivered).toFixed(1)+"%";
+  tv[1].textContent=pctOf(cancelled).toFixed(1)+"%";
+  tv[2].textContent=pctOf(returned).toFixed(1)+"%";
+  tv.forEach(t=>t.classList.remove("skeleton"));
+
+  // funnel stages (order lifecycle)
+  const confirmed=total-cancelled;
+  const stages=[
+    {name:"Placed",              count:total,     color:"#6366f1"},
+    {name:"Confirmed",           count:confirmed, color:"#3b82f6"},
+    {name:"Delivered",           count:delivered, color:"#16a34a"}
+  ];
+  document.getElementById("funnel").innerHTML=stages.map(s=>{
+    const p=pctOf(s.count);
+    return `<div class="fstage">
+      <div class="ftop"><span class="fname">${s.name}</span>
+        <span class="fpct">${num(s.count)} · ${p.toFixed(1)}%</span></div>
+      <div class="fbar-bg"><div class="fbar" style="width:${Math.max(p,8)}%;background:${s.color}">${p.toFixed(0)}%</div></div>
+    </div>`;
+  }).join("");
+
+  // status donut
+  document.getElementById("statusHint").textContent=num(total)+" orders";
+  new Chart(document.getElementById("statusChart").getContext("2d"),{type:"doughnut",
+    data:{labels:["Delivered","Shipped","Processing","Cancelled","Returned"],
+      datasets:[{data:[delivered,shipped,processing,cancelled,returned],
+        backgroundColor:["#16a34a","#3b82f6","#f59e0b","#dc2626","#94a3b8"],borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:"60%",
+      plugins:{legend:{position:"right",labels:{font:{size:11},color:"#171a24",boxWidth:11,padding:9}},
+        tooltip:{callbacks:{label:c=>c.label+": "+num(c.parsed)+" ("+pctOf(c.parsed).toFixed(1)+"%)"}}}}});
+}
+
+/* ---------- nav (scroll to section) ---------- */
+document.querySelectorAll(".nav a").forEach(a=>{
+  a.addEventListener("click",()=>{
+    document.querySelectorAll(".nav a").forEach(x=>x.classList.remove("active"));
+    a.classList.add("active");
+    document.getElementById(a.dataset.go)?.scrollIntoView({behavior:"smooth",block:"start"});
+  });
+});
+
+/* ---------- boot ---------- */
+(async()=>{
+  try{
+    await loadOverview();
+    await Promise.all([ loadCategory(), loadProducts(), loadGeo(), loadFunnel(), loadCustomers() ]);
+  }catch(e){ showError(e.message||e); }
+})();
+</script>
+</body>
+</html>
