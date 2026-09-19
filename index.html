@@ -192,7 +192,7 @@
         <div><h1>Sandbox Store</h1><p>Analytics dashboard</p></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <div class="live"><span class="dot"></span> Live</div>
+        <a class="iconbtn" href="shop.html" aria-label="Open shop" style="text-decoration:none">🛍️</a>
         <button class="iconbtn" id="themeBtn" aria-label="Toggle theme">🌙</button>
       </div>
     </div>
@@ -215,6 +215,13 @@
 
     <!-- OVERVIEW -->
     <section id="sec-overview">
+      <div class="section-title" style="margin-top:8px">🔴 Today · live <span class="tag-static" id="liveRefresh" style="cursor:pointer">↻ refresh</span></div>
+      <div class="tiles" id="liveTiles">
+        <div class="tile"><div class="tv" id="liveOrders">—</div><div class="tl">Orders today</div></div>
+        <div class="tile"><div class="tv" id="liveRev">—</div><div class="tl">Revenue today</div></div>
+        <div class="tile"><div class="tv" id="liveLatest" style="font-size:14px">—</div><div class="tl">Latest order</div></div>
+      </div>
+
       <div class="section-title">Overview · <span id="ovPeriod">all time</span></div>
       <div class="kpis" id="kpis">
         <div class="kpi"><div class="icn i-rev">₹</div><div class="label">Revenue</div><div class="value skeleton" id="kRevV" style="height:22px;width:80%">&nbsp;</div><div class="sub" id="kRevS">realized sales</div></div>
@@ -789,6 +796,18 @@ function applyPeriod(p){
   renderProducts(b); renderAcquisition(b); renderPayment(b);
 }
 
+/* ---------- LIVE: today's orders straight from the raw table ---------- */
+async function loadLive(){
+  try{
+    const today=new Date().toISOString().slice(0,10);
+    const rows=await fetchOne(`orders?select=id,total,city,order_date&order_date=gte.${today}&order=id.desc`);
+    const rev=rows.reduce((s,r)=>s+(+r.total||0),0);
+    document.getElementById("liveOrders").textContent=num(rows.length);
+    document.getElementById("liveRev").textContent=money(rev);
+    document.getElementById("liveLatest").textContent=rows[0]?("#"+rows[0].id):"—";
+  }catch(e){ document.getElementById("liveOrders").textContent="—"; }
+}
+
 /* ---------- static analytics (all-time; rendered once) ---------- */
 function renderHeatmap(){
   const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -913,6 +932,9 @@ document.getElementById("csvBtn").addEventListener("click",exportCSV);
     document.getElementById("kCusV").classList.remove("skeleton");
     applyPeriod("all");                 // drives overview, category, geo, funnel, products, acquisition, payment
     renderHeatmap();                    // static all-time views
+    loadLive();                                            // today's live orders
+    document.getElementById("liveRefresh").onclick=loadLive;
+    setInterval(loadLive, 20000);                          // auto-refresh every 20s
 
     // compare-periods: populate the two selectors and render an initial A/B
     const ay=+ANCHOR_YM.slice(0,4);
