@@ -298,6 +298,17 @@ straight from the raw table (auto-refreshing every 20s) — it starts at 0 and
 ticks up with each purchase. **Lesson:** dashboards mix *pre-aggregated history*
 (fast, occasionally refreshed) with a thin *live* read of raw data for "right now".
 
+### 10b — Scheduling the refresh (pg_cron)
+The summary tables are snapshots, so shop orders only reach the historical charts
+when they're rebuilt. `05_schedule_refresh.sql` wraps the whole rebuild in a
+`refresh_summaries()` function (TRUNCATE + INSERT in place, so the tables always
+exist and keep their RLS policies) and schedules it daily at 3:00 AM IST via
+**pg_cron** (Supabase's built-in scheduler): `cron.schedule('daily-refresh',
+'30 21 * * *', 'select refresh_summaries();')` — cron is UTC, and 21:30 UTC = 3 AM IST.
+Bonus: a daily job keeps the free project from auto-pausing. **Lesson:** the same
+aggregation logic lives in two shapes — `CREATE TABLE AS` for the first build,
+`TRUNCATE + INSERT` for repeatable refreshes that don't disturb readers.
+
 ---
 
 ## How to rebuild everything from zero
