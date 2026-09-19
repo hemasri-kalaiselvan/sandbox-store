@@ -224,6 +224,31 @@ the core idea behind a star schema / OLAP cube.
 
 ---
 
+## Phase 8 — More analytics (RFM, profit, payment, heatmap, forecast, stock)
+
+Six additional views, each a distinct analytics idea:
+
+- **RFM segmentation** (`rfm_segments`) — score every paying customer on Recency,
+  Frequency, Monetary value (tertiles via `ntile(3)`), map to named segments
+  (Champions, Loyal, At risk, Hibernating…). Champions (~15% of buyers) hold ~80%
+  of revenue — the classic Pareto concentration, now visible.
+- **Profit & margin** — added `profit` to `cat_month`; the Category chart has a
+  Revenue/Profit toggle. Revenue leaders and profit leaders differ.
+- **Payment mix** (`payment_month`) — period-filterable donut of UPI/Card/COD/…
+- **Shopping-time heatmap** (`hour_dow`) — orders by weekday × hour; the evening
+  peaks we engineered show up as a bright band Thu–Sat, 6–8pm.
+- **Sales forecast** — a 3-month projection from a linear fit on monthly revenue,
+  drawn as a dashed line (shown for All time / Last 12 months). First taste of
+  predictive analytics.
+- **Stock alerts** — popular products (high units sold) whose current `stock` is
+  low → a "restock soon" list.
+
+**Lesson:** most of these needed no new raw data — just the right *aggregation*
+of what we already had. A good star schema pays off repeatedly: new questions
+become new small summary tables, not new pipelines.
+
+---
+
 ## How to rebuild everything from zero
 
 1. Create a Supabase project (any name; we used `sandbox`).
