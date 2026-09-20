@@ -191,6 +191,16 @@
   :root[data-theme="dark"] .chip.active{color:#fff;}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+#loginOv{position:fixed;inset:0;background:rgba(15,20,35,.6);display:flex;align-items:center;justify-content:center;z-index:9999;}
+#loginOv .loginCard{background:#fff;color:#1a2233;width:min(360px,90vw);padding:24px;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:system-ui,sans-serif;}
+#loginOv h2{margin:0 0 6px;font-size:20px;} #loginOv .lgHint{color:#6b7385;font-size:13px;margin:0 0 14px;}
+#loginOv input{width:100%;padding:11px;margin-bottom:10px;border:1px solid #d7dbe6;border-radius:10px;font-size:14px;box-sizing:border-box;}
+#loginOv .lgErr{color:#dc2626;font-size:12px;min-height:16px;margin-bottom:6px;}
+#loginOv .lgBtn{width:100%;padding:11px;border:0;border-radius:10px;background:#4f46e5;color:#fff;font-size:15px;font-weight:600;cursor:pointer;}
+#loginOv .lgGuest{width:100%;padding:9px;margin-top:8px;border:0;background:none;color:#6b7385;font-size:13px;cursor:pointer;text-decoration:underline;}
+#lgOut{position:fixed;top:10px;right:10px;z-index:9998;padding:6px 12px;border:1px solid #d7dbe6;border-radius:20px;background:#fff;color:#1a2233;font-size:12px;cursor:pointer;}
+</style>
 </head>
 <body>
 <div class="app">
@@ -405,13 +415,52 @@
 /* ============================================================
    CONFIG — Supabase (anon key: public & read-only)
    ============================================================ */
-const _auth = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-const email = prompt("Login email:"); const pass = prompt("Password:");
-await _auth.auth.signInWithPassword({ email, password: pass });
-  
 const SUPABASE_URL = "https://vzpzvjxendcacvfstcge.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6cHp2anhlbmRjYWN2ZnN0Y2dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3NzkwNzEsImV4cCI6MjEwNTM1NTA3MX0.8K9quNMoXc9N4PmIuTERoLHpkMSf9qaFJBkI8nybjzA";
-const HEADERS = { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY };
+let HEADERS = { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY };
+
+/* ---------- auth for region privilege (Feature 1) ----------
+   If 07_privilege.sql is applied, the anon key returns NO rows, so admin/
+   managers must sign in. Guests keep the anon key (public data — works only
+   when privilege is NOT applied). All fetches read the shared HEADERS var,
+   so swapping it after login scopes every request to that user's region. */
+const _auth = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+function _useToken(tok){ HEADERS = { apikey: SUPABASE_KEY, Authorization: "Bearer " + tok }; }
+function _signoutBtn(){
+  if(document.getElementById("lgOut")) return;
+  const b=document.createElement("button");
+  b.id="lgOut"; b.textContent="Sign out";
+  b.onclick=async()=>{ await _auth.auth.signOut(); location.reload(); };
+  document.body.appendChild(b);
+}
+async function ensureAuth(){
+  if(!_auth) return;                              // library missing -> stay anon
+  const { data:{ session } } = await _auth.auth.getSession();
+  if(session){ _useToken(session.access_token); _signoutBtn(); return; }   // already logged in
+  return new Promise(resolve=>{
+    const ov=document.createElement("div"); ov.id="loginOv";
+    ov.innerHTML=`<div class="loginCard">
+        <h2>Sign in</h2>
+        <p class="lgHint">Region managers sign in to see their region. Or continue as guest for public data.</p>
+        <input id="lgEmail" type="email" placeholder="Email" autocomplete="username">
+        <input id="lgPass" type="password" placeholder="Password" autocomplete="current-password">
+        <div id="lgErr" class="lgErr"></div>
+        <button id="lgGo" class="lgBtn">Sign in</button>
+        <button id="lgGuest" class="lgGuest">Continue as guest</button>
+      </div>`;
+    document.body.appendChild(ov);
+    const done=()=>{ ov.remove(); resolve(); };
+    document.getElementById("lgGuest").onclick=done;             // keep anon HEADERS
+    document.getElementById("lgGo").onclick=async()=>{
+      const email=document.getElementById("lgEmail").value.trim();
+      const password=document.getElementById("lgPass").value;
+      const err=document.getElementById("lgErr"); err.textContent="";
+      const { data, error }=await _auth.auth.signInWithPassword({ email, password });
+      if(error){ err.textContent=error.message; return; }
+      _useToken(data.session.access_token); _signoutBtn(); done();
+    };
+  });
+}
 
 const CAT_COLORS = {
   "Electronics":"#6366f1","Fashion":"#ec4899","Home & Kitchen":"#14b8a6",
@@ -984,6 +1033,7 @@ document.getElementById("csvBtn").addEventListener("click",exportCSV);
 /* ---------- boot ---------- */
 (async()=>{
   try{
+    await ensureAuth();                 // Feature 1: sign in (or guest) before loading data
     const [daily,catm,stm,statm,prodm,cacq,paym,hdow,customers]=await Promise.all([
       fetchAll("daily_sales?select=day,orders,valid_orders,revenue&order=day.asc"),
       fetchAll("cat_month?select=month,category,revenue,profit&order=month.asc"),
