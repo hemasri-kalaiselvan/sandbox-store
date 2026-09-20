@@ -190,6 +190,7 @@
   :root[data-theme="dark"] .segbtn.active,
   :root[data-theme="dark"] .chip.active{color:#fff;}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div class="app">
@@ -404,6 +405,10 @@
 /* ============================================================
    CONFIG — Supabase (anon key: public & read-only)
    ============================================================ */
+const _auth = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const email = prompt("Login email:"); const pass = prompt("Password:");
+await _auth.auth.signInWithPassword({ email, password: pass });
+  
 const SUPABASE_URL = "https://vzpzvjxendcacvfstcge.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6cHp2anhlbmRjYWN2ZnN0Y2dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3NzkwNzEsImV4cCI6MjEwNTM1NTA3MX0.8K9quNMoXc9N4PmIuTERoLHpkMSf9qaFJBkI8nybjzA";
 const HEADERS = { apikey: SUPABASE_KEY, Authorization: "Bearer " + SUPABASE_KEY };
