@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analytics Dashboard — Template</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="config.js"></script>
+<style>
+  :root{--bg:#f4f6fb;--card:#fff;--ink:#1a2233;--muted:#6b7385;--line:#e6e9f0;--accent:#4f46e5;}
+  *{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
+  body{background:var(--bg);color:var(--ink);padding:16px;max-width:1100px;margin:0 auto;}
+  h1{font-size:20px;margin-bottom:2px;} .sub{color:var(--muted);font-size:13px;margin-bottom:16px;}
+  .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;}
+  .bar input[type=file]{font-size:12px;}
+  .pill{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:6px 12px;font-size:12px;color:var(--muted);}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;}
+  .kpi .v{font-size:22px;font-weight:700;} .kpi .l{color:var(--muted);font-size:12px;margin-top:4px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media(max-width:720px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px;}
+  .card h3{font-size:14px;margin-bottom:10px;} .card canvas{max-height:260px;}
+  #msg{padding:12px;border-radius:10px;background:#fff3cd;border:1px solid #ffe08a;font-size:13px;color:#664d03;margin-bottom:14px;display:none;}
+</style>
+</head>
+<body>
+  <h1>Analytics Dashboard</h1>
+  <div class="sub" id="srcline">Loading…</div>
+  <div id="msg"></div>
+  <div class="bar">
+    <span class="pill" id="rows">—</span>
+    <span class="pill" id="span">—</span>
+    <input type="file" id="file" accept=".csv" style="display:none">
+    <button class="pill" id="upl" style="cursor:pointer;display:none">⬆ Upload CSV</button>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v" id="k_rev">—</div><div class="l">Revenue</div></div>
+    <div class="kpi"><div class="v" id="k_ord">—</div><div class="l">Orders</div></div>
+    <div class="kpi"><div class="v" id="k_aov">—</div><div class="l">Avg order value</div></div>
+    <div class="kpi"><div class="v" id="k_cus">—</div><div class="l">Customers</div></div>
+  </div>
+
+  <div class="card"><h3>Revenue over time (monthly)</h3><canvas id="c_trend"></canvas></div>
+  <div class="grid">
+    <div class="card"><h3>Revenue by category</h3><canvas id="c_cat"></canvas></div>
+    <div class="card"><h3>Revenue by region</h3><canvas id="c_state"></canvas></div>
+    <div class="card"><h3>Payment method</h3><canvas id="c_pay"></canvas></div>
+    <div class="card"><h3>Order status</h3><canvas id="c_status"></canvas></div>
+  </div>
+
+<script>
+const CFG = window.DASH_CONFIG || {};
+const COL = CFG.COLUMNS || {};
+const EXCLUDED = ["cancelled","returned","refunded"];   // not counted as revenue
+const charts = {};
+const fmtMoney = n => (n>=1e7? (n/1e7).toFixed(2)+" Cr" : n>=1e5? (n/1e5).toFixed(2)+" L" : n>=1e3? (n/1e3).toFixed(1)+"k" : Math.round(n));
+const fmtNum = n => n.toLocaleString();
+
+function msg(t){ const m=document.getElementById("msg"); m.style.display="block"; m.textContent=t; }
+
+// map one raw row -> normalized fields using COLUMNS
+function norm(r){
+  const g = k => r[COL[k]];
+  return {
+    date:   String(g("order_date")||"").slice(0,10),
+    amount: parseFloat(String(g("amount")||"0").replace(/[^0-9.\-]/g,""))||0,
+    cat:    g("category")||"Uncategorised",
+    state:  g("state")||"Unknown",
+    pay:    g("payment_method")||"Unknown",
+    status: String(g("status")||"").toLowerCase(),
+    cust:   g("customer_id")
+  };
+}
+
+function aggregate(rows){
+  const R = rows.map(norm).filter(x=>x.date);
+  const live = R.filter(x=>!EXCLUDED.includes(x.status));   // revenue-bearing
+  const sum = a => a.reduce((s,x)=>s+x.amount,0);
+  const revenue = sum(live), orders = live.length;
+  const custs = new Set(live.map(x=>x.cust).filter(v=>v!=null&&v!=="")).size;
+  const by = (arr,key) => { const m={}; arr.forEach(x=>m[x[key]]=(m[x[key]]||0)+x.amount); return m; };
+  const cnt = (arr,key) => { const m={}; arr.forEach(x=>m[x[key]]=(m[x[key]]||0)+1); return m; };
+  const month = {}; live.forEach(x=>{const k=x.date.slice(0,7); month[k]=(month[k]||0)+x.amount;});
+  return {
+    revenue, orders, aov: orders? revenue/orders : 0, custs,
+    dates: R.map(x=>x.date).filter(Boolean).sort(),
+    month, cat: by(live,"cat"), state: by(live,"state"),
+    pay: cnt(R,"pay"), status: cnt(R,"status")
+  };
+}
+
+function topN(obj,n){ return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n); }
+function draw(id,type,labels,data,label){
+  if(charts[id]) charts[id].destroy();
+  const palette=["#4f46e5","#06b6d4","#22c55e","#f59e0b","#ef4444","#a855f7","#ec4899","#14b8a6","#64748b","#eab308"];
+  charts[id]=new Chart(document.getElementById(id),{type,
+    data:{labels,datasets:[{label,data,
+      backgroundColor:type==="line"?"rgba(79,70,229,.12)":palette,
+      borderColor:"#4f46e5",fill:type==="line",tension:.3,borderWidth:type==="line"?2:0}]},
+    options:{responsive:true,plugins:{legend:{display:type==="doughnut",position:"bottom",labels:{font:{size:10}}}},
+      scales:type==="doughnut"?{}:{y:{ticks:{callback:v=>fmtMoney(v)}}}}});
+}
+
+function render(rows){
+  const a = aggregate(rows);
+  document.getElementById("rows").textContent = fmtNum(rows.length)+" rows";
+  document.getElementById("span").textContent = a.dates.length? a.dates[0]+" → "+a.dates[a.dates.length-1] : "no dates";
+  document.getElementById("k_rev").textContent = "₹"+fmtMoney(a.revenue);
+  document.getElementById("k_ord").textContent = fmtNum(a.orders);
+  document.getElementById("k_aov").textContent = "₹"+fmtMoney(a.aov);
+  document.getElementById("k_cus").textContent = a.custs? fmtNum(a.custs) : "—";
+  const mk = Object.keys(a.month).sort();
+  draw("c_trend","line",mk,mk.map(k=>a.month[k]),"Revenue");
+  const c=topN(a.cat,10);   draw("c_cat","bar",c.map(x=>x[0]),c.map(x=>x[1]),"Revenue");
+  const s=topN(a.state,10); draw("c_state","bar",s.map(x=>x[0]),s.map(x=>x[1]),"Revenue");
+  const p=topN(a.pay,6);    draw("c_pay","doughnut",p.map(x=>x[0]),p.map(x=>x[1]),"Orders");
+  const st=topN(a.status,6);draw("c_status","doughnut",st.map(x=>x[0]||"unknown"),st.map(x=>x[1]),"Orders");
+}
+
+// ---------- data sources ----------
+function fromCSVtext(text){
+  const out = Papa.parse(text,{header:true,skipEmptyLines:true});
+  if(!out.data.length) return msg("No rows found. Check the file/link and column names.");
+  render(out.data);
+}
+function loadSheets(){
+  const url = CFG.SHEETS_CSV_URL;
+  if(!url || url.includes("PASTE_")) return msg("Set SHEETS_CSV_URL in config.js (Publish to web > CSV).");
+  Papa.parse(url,{download:true,header:true,skipEmptyLines:true,
+    complete:o=>o.data.length?render(o.data):msg("Sheet loaded but empty — check the published range."),
+    error:e=>msg("Could not load the sheet: "+e.message)});
+}
+async function loadSupabase(){
+  const {SUPABASE_URL,SUPABASE_KEY,SUPABASE_TABLE}=CFG;
+  if(!SUPABASE_URL||SUPABASE_URL.includes("YOURPROJECT")) return msg("Set SUPABASE_URL / KEY / TABLE in config.js.");
+  const cols = Object.values(COL).join(",");
+  const rows=[]; let from=0; const page=1000;
+  try{
+    while(true){
+      const res=await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?select=${cols}`,
+        {headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+SUPABASE_KEY,Range:`${from}-${from+page-1}`}});
+      if(!res.ok) return msg("Supabase error "+res.status+": "+(await res.text()).slice(0,120));
+      const chunk=await res.json(); rows.push(...chunk);
+      if(chunk.length<page) break; from+=page; if(from>200000) break;
+    }
+    rows.length? render(rows) : msg("Table returned no rows.");
+  }catch(e){ msg("Fetch failed: "+e.message); }
+}
+
+// ---------- boot ----------
+document.getElementById("upl").onclick=()=>document.getElementById("file").click();
+document.getElementById("file").onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  Papa.parse(f,{header:true,skipEmptyLines:true,complete:o=>render(o.data)});
+};
+(function(){
+  const s=(CFG.SOURCE||"").toLowerCase();
+  document.getElementById("srcline").textContent="Source: "+(s||"not set");
+  if(s==="googlesheets") loadSheets();
+  else if(s==="supabase") loadSupabase();
+  else if(s==="csv"){ document.getElementById("upl").style.display="inline-block"; msg("Click “Upload CSV” to load your file."); }
+  else msg("Open config.js and set SOURCE to googlesheets, csv, or supabase.");
+})();
+</script>
+</body>
+</html>
