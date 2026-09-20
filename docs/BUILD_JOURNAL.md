@@ -363,3 +363,16 @@ Revenue convention: counts orders **not** cancelled/returned (realized sales).
 - **A shopping front-end** so real orders flow into the same dashboard.
 - **Auto-refresh of summary tables** (a scheduled job) as new orders arrive.
 - **Publish to GitHub Pages** for a real phone URL; later, wrap for the Play Store.
+
+## Phase 9 — Two add-on features (privilege + pluggable source)
+- **07_privilege.sql**: region RLS. `app_users(user_id,role,region)` + `my_role()/my_region()`
+  helpers; state-bearing tables (orders, customers, state_sales, state_month) get a
+  region-scoped read policy (admin = all, manager = own state); order_items scoped via its
+  order. Non-state summaries stay public (documented limitation). Tested on local PG:
+  admin=15 states, TN manager=1 (Tamil Nadu).
+- **template/**: standalone sellable dashboard. `config.js` chooses source
+  (googlesheets published CSV / CSV upload / supabase REST) + maps buyer's column names to a
+  fixed data contract; `dashboard-template.html` parses (PapaParse) and aggregates client-side
+  (KPIs, monthly trend, category/region/payment/status). `sample-data.csv` = the contract.
+  Tested: cancelled rows excluded, ₹/comma amounts parsed, distinct customers counted.
+- STEPS_two_features.md documents both. Local Postgres test instance stopped.
