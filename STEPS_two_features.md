@@ -26,22 +26,20 @@ it's real security, not just a hidden UI.
      ('MANAGER-UID', 'priya@example.com', 'manager', 'Tamil Nadu');
    ```
    `region` must match the state name exactly as it appears in your data.
-5. **Add login to the dashboard:** in `index.html`, just before `</head>`, add:
-   ```html
-   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-   ```
-   and near the top of your main `<script>` add (uses your existing URL + anon key):
-   ```js
-   const _auth = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-   const email = prompt("Login email:"); const pass = prompt("Password:");
-   await _auth.auth.signInWithPassword({ email, password: pass });
-   ```
-   Then make your data `fetch()` calls send the logged-in token instead of the anon key:
-   `Authorization: "Bearer " + (await _auth.auth.getSession()).data.session.access_token`.
-   Now the database returns only that user's region automatically.
+5. **Login is already built into `index.html`** — nothing to code. On open it now
+   shows a sign-in box: managers/admin sign in with the email+password from step 3;
+   a **"Continue as guest"** link loads public data (only works if you have NOT run
+   the privilege SQL). After sign-in, every request is scoped to that user's region
+   automatically, and a **Sign out** button appears top-right. Just re-upload the
+   updated `index.html` to your repo.
 
-**Test:** log in as the manager → every state chart/table shows one region.
-Log in as admin → everything. (Verified locally: admin = all 15 states, TN manager = only Tamil Nadu.)
+**Important:** once `07_privilege.sql` is applied, the guest/anon view returns **no
+rows** (that's the security working) — so guests will see an empty dashboard until
+you sign in. If you want the public demo to keep working, don't run the privilege SQL
+on that project.
+
+**Test:** sign in as the manager → every state chart/table shows one region.
+Sign in as admin → everything. (Verified locally: admin = all 15 states, TN manager = only Tamil Nadu.)
 
 **Honest limitation:** tables without a state column (category/product/cohort summaries)
 stay visible to all logged-in users. For strict per-region everywhere, a manager view
