@@ -1,5 +1,13 @@
 # Sandbox Store — E-commerce Analytics Dashboard
 
+> A mobile-first, Power BI–style analytics dashboard on a realistic e-commerce dataset — a learning project exploring how seller dashboards actually work.
+
+**Tech:** HTML, CSS, JavaScript, Chart.js, SQL, PostgreSQL
+**Tools:** GitHub, Supabase
+**AI Tools:** Claude
+
+## About
+
 A mobile-first, Power BI–style **data-analytics dashboard** built on a realistic
 e-commerce dataset. Made as a learning project to explore how analytics
 dashboards (like Amazon's / Flipkart's seller dashboards) actually work.
@@ -42,10 +50,12 @@ In the Supabase SQL Editor, run in order:
 
 See `sql/README.md` for details and expected row counts.
 
-## How it was built
+## How AI Helped
 
 A full, step-by-step build journal — every decision, every concept, and the
 bugs fixed along the way — is in **[`docs/BUILD_JOURNAL.md`](docs/BUILD_JOURNAL.md)**.
+
+- **Claude** — design direction, code, SQL data generation, debugging, and deployment
 
 ## Project structure
 
